@@ -2,10 +2,14 @@ import numpy as np
 from scipy.interpolate import interp1d
 from scipy.interpolate import PchipInterpolator
 
+from scipy.interpolate import PchipInterpolator
+
 from scipy.ndimage import median_filter
 from astropy.modeling import fitting, polynomial
 from astropy.stats import sigma_clip
 import pickle
+
+from scipy.optimize import least_squares
 
 from scipy.optimize import least_squares
 
@@ -142,13 +146,13 @@ class Order:
         if len(ind_tel)>0: ind_tel = np.sort(np.unique(np.concatenate(ind_tel)))
         else:              ind_tel = []
 
+        print("Removed Telluric pixels: ", len(ind_tel))
+
         ### Remove regions of strong telluric absorption
         I_cl    = np.delete(self.I_raw,ind_tel,axis=1)
         A_cl    = np.delete(self.I_atm,ind_tel,axis=1)
         W_cl    = np.delete(self.W_raw,ind_tel)
-        return W_cl,I_cl,A_cl
-
-
+        return W_cl,I_cl,A_cl, Am
 
 
     
@@ -500,7 +504,7 @@ class Order:
         thres         = np.zeros(Nmap) ### Store highest eigenvalue for each noise map
         for ii in range(Nmap):        
             ### Generate noise map
-            NN    = np.random.normal(0.0,std_in*ampl)
+            NN    = np.random.normal(0.0,np.abs(std_in*ampl))
             Nm    = np.dot(np.mean(NN,axis=0).reshape((NN.shape[1],1)),np.ones((1,NN.shape[0]))).T
             Ns    = np.dot(np.std(NN,axis=0).reshape((NN.shape[1],1)),np.ones((1,NN.shape[0]))).T  
             Nf    = (NN-Nm)/Ns          
@@ -574,7 +578,7 @@ def get_transit_dates(wind):
     
 def tellurics_and_borders(O,dep_min,thres_up,N_bor): 
     ### First we identify strong telluric lines and remove the data within these lines -- see Boucher+2021
-    W_cl,I_cl,A_cl =  O.remove_tellurics(dep_min,thres_up)
+    W_cl,I_cl,A_cl,Am =  O.remove_tellurics(dep_min,thres_up)
     
     W_cl = W_cl[N_bor:-N_bor]
     I_cl = I_cl[:,N_bor:-N_bor]
@@ -583,7 +587,7 @@ def tellurics_and_borders(O,dep_min,thres_up,N_bor):
         
     ### If the order does not contain enough points, it is discarded
 
-    return W_cl,I_cl,A_cl
+    return W_cl,I_cl,A_cl, Am
         
 
 # -----------------------------------------------------------
@@ -653,7 +657,7 @@ def move_spec(V,I,Vc,sig_g):
 
 def apply_PCA(O,mode_norm_pca,wpca):
     if O.n_com > 0:
-        Il    = np.log(O.I_fin)
+        Il    = np.log(O.I_fin) #np.log(O.I_fin)
         
         if mode_norm_pca =="none":
             ff = Il            
@@ -773,7 +777,4 @@ def calculate_final_metrics(O,N_px,file):
        
 def LS_func_Flo(x,star_spec,obs_spec):
 
-    return (x[0]*star_spec+x[1]-obs_spec)**2
-  
-
-
+    return (x[0]*star_spec+x[1]-obs_spec)**2    

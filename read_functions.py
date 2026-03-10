@@ -42,7 +42,15 @@ def read_data_spirou(repp,list_ord,nord):
                     - snr_mat: 2D matrix containing the S/N value for each observation and order (N_observation,N_order)
     """
     print(repp)
-    nam_t     = sorted(os.listdir(repp))
+    directory = os.listdir(repp)
+    nam_t = []
+    
+    #Get only t.fits files (in case other files in the directory)
+    for filename in directory:
+        if "t.fits" in filename:
+            nam_t.append(filename)
+    
+    nam_t     = sorted(nam_t)
     nobs      = len(nam_t)
     airmass   = np.zeros(nobs)
     bjd       = np.zeros(nobs)
@@ -84,8 +92,170 @@ def read_data_spirou(repp,list_ord,nord):
         O.I_atm = np.array(O.I_atm,dtype=float)
     return list_ord,airmass,bjd,berv,snr_mat
  
+ 
+# -----------------------------------------------------------
+# This function reads a time series of APERO-DRS NIRPS files
+# It stores some of the relevant information into "Order" objects
+# and returns time series relevant for the analysis
+# The spectra to read must be stored in a dedicated repository
+# For the time being, the function can only read t.fits extensions 
+# -----------------------------------------------------------
+def read_data_nirps(repp,list_ord,nord):
 
+    """
+    --> Inputs:     - repp:      Path to the directory containing all the '.fits' files to read
+                                 NOTE: files must be ordered in the chronologic order
+                    - list_ord:  List of Order object
+                    - nord:      Number of orders -- xx for NIRPS
+
+    --> Outputs:    - Attributes of Order objects:
+                      1. W_raw (Wavelengths vectors)
+                      2. I_raw (Time series of spectra)
+                      3. blaze (Time series of blaze functions)
+                      4. A_raw (Time series of telluric spectra computed from the DRS)
+                      5. SNR (list of order S/N values for all observations)
+                    - list_ord: upgraded list of orders
+                    - airmass: airmass value for each observation
+                    - bjd: time vector
+                    - snr_mat: 2D matrix containing the S/N value for each observation and order (N_observation,N_order)
+    """
+    directory = os.listdir(repp)
+    nam_t = []
+
+    #Get only t.fits files (in case other files in the directory)
+    for filename in directory:
+        if "t.fits" in filename:
+            nam_t.append(filename)
     
+    nam_t     = sorted(nam_t)
+    nobs      = len(nam_t)
+    airmass   = np.zeros(nobs)
+    bjd       = np.zeros(nobs)
+    berv      = np.zeros(nobs)
+    snr_mat   = np.zeros((nobs,nord))
+    for nn in range(nobs):
+        nmn          = repp + "/" + str(nam_t[nn])
+        hdul_t       = fits.open(nmn)
+        airmass[nn]  = (float(hdul_t[0].header["HIERARCH ESO TEL AIRM START"])
+                        +float(hdul_t[0].header["HIERARCH ESO TEL AIRM END"]))/2
+        bjd[nn]      = float(hdul_t[1].header["BJD"])
+        berv[nn]     = float(hdul_t[1].header["BERV"])  
+        i            = np.array(hdul_t[1].data,dtype=float) # intensity spectrum
+        w            = np.array(hdul_t[2].data,dtype=float) # wavelength vector
+        bla          = np.array(hdul_t[3].data,dtype=float) # blaze vector
+        atm          = np.array(hdul_t[4].data,dtype=float) # telluric spectrum
+        ### Get S/N values
+        for mm in range(nord):
+            num = list_ord[mm].number
+            if num < 10: key = "EXTSN00" + str(num)
+            else: key = "EXTSN0" + str(num)
+            sn  = float(hdul_t[1].header[key]) # S/N for each order
+            list_ord[mm].SNR.append(sn)
+            snr_mat[nn,mm] = sn
+        hdul_t.close()
+        ## Store Order's attributes
+        for mm in range(nord):
+            O = list_ord[mm]
+            num = list_ord[mm].number
+            O.W_raw.append(w[num])
+            O.I_raw.append(i[num])
+            O.blaze.append(bla[num])
+            O.I_atm.append(atm[num])
+    for mm in range(nord):
+        O       = list_ord[mm]
+        O.SNR   = np.array(O.SNR,dtype=float)
+        O.W_raw = np.array(O.W_raw,dtype=float)
+        O.I_raw = np.array(O.I_raw,dtype=float)
+        O.blaze = np.array(O.blaze,dtype=float)
+        O.I_atm = np.array(O.I_atm,dtype=float)
+    
+    return list_ord,airmass,bjd,berv,snr_mat
+
+
+# -----------------------------------------------------------
+# This function reads a time series of HARPS DRS (S2D) files
+# It stores some of the relevant information into "Order" objects
+# and returns time series relevant for the analysis
+# The spectra to read must be stored in a dedicated repository
+# For the time being, the function can only read t.fits extensions 
+# -----------------------------------------------------------
+def read_data_harps(repp,list_ord,nord):
+
+    """
+    --> Inputs:     - repp:      Path to the directory containing all the '.fits' files to read
+                                 NOTE: files must be ordered in the chronologic order
+                    - list_ord:  List of Order object
+                    - nord:      Number of orders -- xx for NIRPS
+
+    --> Outputs:    - Attributes of Order objects:
+                      1. W_raw (Wavelengths vectors)
+                      2. I_raw (Time series of spectra)
+                      3. blaze (Time series of blaze functions)
+                      4. A_raw (Time series of telluric spectra computed from the DRS)
+                      5. SNR (list of order S/N values for all observations)
+                    - list_ord: upgraded list of orders
+                    - airmass: airmass value for each observation
+                    - bjd: time vector
+                    - snr_mat: 2D matrix containing the S/N value for each observation and order (N_observation,N_order)
+    """
+    directory = os.listdir(repp)
+    nam_t = []
+    nam_raw = []
+
+    #Get only t.fits files (in case other files in the directory)
+    for filename in directory:
+        if "S2D_A.fits" in filename:
+            nam_t.append(filename)
+        if "S2D_BLAZE_A.fits" in filename:
+            nam_raw.append(filename)
+    
+    nam_t     = sorted(nam_t)
+    nam_raw     = sorted(nam_raw)
+    nobs      = len(nam_t)
+    airmass   = np.zeros(nobs)
+    bjd       = np.zeros(nobs)
+    berv      = np.zeros(nobs)
+    snr_mat   = np.zeros((nobs,nord))
+    for nn in range(nobs):
+        nmn          = repp + "/" + str(nam_t[nn])
+        hdul_t       = fits.open(nmn)
+        nmn_raw      = repp + "/" + str(nam_raw[nn])
+        hdul_raw     = fits.open(nmn_raw)
+        airmass[nn]  = (float(hdul_t[0].header["HIERARCH ESO TEL AIRM START"])
+                        +float(hdul_t[0].header["HIERARCH ESO TEL AIRM END"]))/2
+        bjd[nn]      = float(hdul_t[0].header["HIERARCH ESO QC BJD"])
+        berv[nn]     = float(hdul_t[0].header["HIERARCH ESO QC BERV"])  
+        i            = np.array(hdul_raw[1].data,dtype=float) # intensity spectrum - raw
+        w            = np.array(hdul_t[4].data,dtype=float) / 10 # wavelength vector [nm]
+        bla          = np.array(hdul_raw[1].data/hdul_t[1].data,dtype=float) # blaze vector - computed from blaze corrected
+        atm          = np.ones_like(i) # telluric spectrum - no telluric correction for the moment
+        ### Get S/N values
+        for mm in range(nord):
+            num = list_ord[mm].number
+            key = "HIERARCH ESO QC ORDER" + str(num+1) + " SNR"
+            sn  = float(hdul_t[0].header[key]) # S/N for each order
+            list_ord[mm].SNR.append(sn)
+            snr_mat[nn,mm] = sn
+        hdul_t.close()
+        ## Store Order's attributes
+        for mm in range(nord):
+            O = list_ord[mm]
+            num = list_ord[mm].number
+            O.W_raw.append(w[num])
+            O.I_raw.append(i[num])
+            O.blaze.append(bla[num])
+            O.I_atm.append(atm[num])
+    for mm in range(nord):
+        O       = list_ord[mm]
+        O.SNR   = np.array(O.SNR,dtype=float)
+        O.W_raw = np.array(O.W_raw,dtype=float)
+        O.I_raw = np.array(O.I_raw,dtype=float)
+        O.blaze = np.array(O.blaze,dtype=float)
+        O.I_atm = np.array(O.I_atm,dtype=float)
+    
+    return list_ord,airmass,bjd,berv,snr_mat
+
+
 # -----------------------------------------------------------
 # Get transit window -- requires batman python module
 # Uncomment lines below to use batman module to compute transit flux
@@ -206,6 +376,7 @@ class Order:
 
         ### Remove blaze
         I_bl = self.I_raw/self.blaze
+        W_bl = self.W_raw
 
         
         ### Spot the NaNs:
@@ -214,7 +385,7 @@ class Order:
         ### Here we build a vector 'ind' stroring the position of the NaNs in every spectrum
         ind   = []
         for nn in range(len(I_bl)):
-            i = np.where(np.isfinite(I_bl[nn])==True)[0]
+            i = np.where((np.isfinite(I_bl[nn])==True)&(np.isfinite(W_bl[nn])==True))[0]
             ind.append(i)
         r  = np.array(list(set.intersection(*map(set,ind))),dtype=int)
         r  = np.sort(np.unique(r))

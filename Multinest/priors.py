@@ -14,7 +14,7 @@ class Priors(object):
     def GeneralPrior(self,r,PriorType,x1,x2):
         if PriorType=='DELTA':
             return self.DeltaFunctionPrior(r,x1,x2)
-        elif PriorType=='U':
+        elif PriorType=='uniform':
             return self.UniformPrior(r,x1,x2)
         elif PriorType=='LOG':
             return self.LogPrior(r,x1,x2)

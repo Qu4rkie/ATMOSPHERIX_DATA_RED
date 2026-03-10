@@ -27,22 +27,21 @@ def return_data(config_dict):
         proj_data.append(proj)
         #print(len(proj))
         #exit()        
+	
+    uncertainties_LR = []
+    data_LR = []
+    data_LR_wavelength = []
 
 #    only if you use LRS
-	
-#    uncertainties_LR = []
-#    data_LR = []
-#    data_LR_wavelength = []
 #    data_table = np.loadtxt(config_dict["LRS_file"], skiprows=1)
 #    for i in range(len(data_table)): #reading the data file
 #        data_LR_wavelength.append(data_table[i][0])
 #        data_LR.append(data_table[i][1])
 #        uncertainties_LR.append(data_table[i][2])
 #
-
- #final_data and final std contain num_transit arrays of size norders*nphase.
- #each cnsecutive array is a new phase, until all phases are explored 
- #and you get to a new order.
+#final_data and final std contain num_transit arrays of size norders*nphase.
+#each cnsecutive array is a new phase, until all phases are explored 
+#and you get to a new order.
  
 #final V contains num_transit arrays of size norders,
 #as we don't require a phase dependency.
@@ -51,7 +50,7 @@ def return_data(config_dict):
 
     return {
 			"orders": orders_data,
-       "wmean" : wmean_data,  
+            "wmean" : wmean_data,  
             "V"    : V_data,
 			"intensity": intensity_data,
             "std" : std_data,

@@ -10,7 +10,6 @@ import numpy as np
 import os
 import convolve_templates as conv
 
-
 c0 = 299792458.0
 G = 6.67e-11
 h_planck =  6.62607015e-34
@@ -27,44 +26,60 @@ def B(lambdas,T): #Planck function as a function of wavelength for emission spec
     return 2*h_planck*c0**2/(lambdas**5)/(np.exp(h_planck*c0/lambdas/T/k_boltzmann)-1.)
 nf = 501
 
-type_templ = "transmission"
-# type_templ = "emission"
+#type_templ = "transmission"
+type_templ = "emission"
 
-R_unit = "cm"
+#R_unit = "cm"
 R_unit = "none"
 Rs =0.375* 696340000.0 # in solpltar unit
 Ts = 3600.
 
 Rp = 0.5485*69911000.0
 
-lambdas_unit = "micron"
+#lambdas_unit = "micron"
 lambdas_unit = "nano"
 
 
-transit_depth = True
+#transit_depth = True
 transit_depth = False
 
+#broadening = True
 broadening = True
-broadening = False
 
 norm = True
-# norm = False
+#norm = False
 
 Nphase = 1
 #name only needed if Nphase =1
-name ="HD189_transmission"
+name ="WASP33_13CO"
 
 # dire = "/home/adminloc/Bureau/Atmospheres/ELT/HIP67522/Models//"
-dire = "/home/adminloc/Bureau/Atmospheres/Pipeline_v2/ATMOSPHERIX_DATA_RED/Models/Results/"
+dire = "/user/home/yarivv/ATMOSPHERIX_DATA_RED/Models/Results/"
 
-dire_res = "/home/adminloc/Bureau/Atmospheres/Pipeline_v2//ATMOSPHERIX_DATA_RED/Templates/"
+dire_res = "/user/home/yarivv/ATMOSPHERIX_DATA_RED/Templates/"
 # dire_res = "/home/florian/Bureau/Atmosphere_SPIRou/Models/GL15A/HD189/to-correl/"
 
 #SPIRou
-list_ord = np.arange(31,80)
-wlen_file ="/home/adminloc/Bureau/Atmospheres/Pipeline_v2/ATMOSPHERIX_DATA_RED/wlen.dat"
-
-
+instrument = "SPIROU"    #supported instruments "NIRPS", "SPIRou", "IGRINS", "HARPS"
+#Instrument parameters
+if instrument == "SPIROU":
+    list_ord = np.arange(31,80)
+    #list_ord = np.arange(58,67)
+    wlen_file ="/user/home/yarivv/ATMOSPHERIX_DATA_RED/Instruments/wlen_SPIROU.dat"
+    sigma = 1800            #Instrumental broadening [m/s]
+elif instrument == "NIRPS":
+    list_ord = np.arange(0,75)
+    wlen_file ="/user/home/yarivv/ATMOSPHERIX_DATA_RED/Instruments/wlen_NIRPS.dat"
+    sigma = 1600            #Instrumental broadening [m/s] for R~80K in HE mode
+elif instrument == "IGRINS":
+    ### List of IGRINS absolute orders -- Reddest: 53; Bluest: 0
+    list_ord   =  np.arange(0,54)
+    wlen_file ="/user/home/yarivv/ATMOSPHERIX_DATA_RED/Instruments/wlen_IGRINS.dat"
+    sigma = 2800            #Instrumental broadening [m/s]
+elif instrument == "HARPS":
+    list_ord = np.arange(0,71)
+    wlen_file ="/user/home/yarivv/ATMOSPHERIX_DATA_RED/Instruments/wlen_HARPS.dat"
+    sigma = 1150            #Instrumental broadening [m/s] for R~110K
 
 if type_templ =="transmission":
     if transit_depth:
@@ -88,7 +103,7 @@ wlen = np.loadtxt(wlen_file)
 if lambdas_unit=="micron":
     wavelength = wavelength*1000
 
-dire_resphase =dire_res+name
+dire_resphase = dire_res+name+"_"+instrument
 
 if norm==False:
     dire_resphase += "_nonorm"
@@ -124,7 +139,11 @@ for i in range(len(list_ord)):
             # for the stellar spectrum .... that's a trouble with RM
             
     if broadening:
-        conv_wl,conv_planet = conv.rotate( out[1],out[0],0.0,0.0)
+        try:
+            conv_wl,conv_planet = conv.rotate( out[1],out[0],6.7*1e3,0.0)
+        except:
+            print ("Removed order : ",list_ord[no])
+            continue
         out = np.zeros((2,len(conv_wl)))
         out[0] = conv_wl
         out[1] = conv_planet

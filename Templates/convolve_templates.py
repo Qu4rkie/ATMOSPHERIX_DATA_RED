@@ -28,7 +28,7 @@ def rotate(R,wl,vrot,superrot,angle_super=25.0*np.pi/180,sigma=1800.0) :
     v = np.linspace(-vlim,vlim,nv)
     dv = v[1]-v[0]
     #we interpolate the model onto a regularly spaced speed array
-    w0 = np.mean(wl)
+    w0 = np.nanmean(wl)
     speed = c0*(w0/wl-1)
     speed_int = np.arange(0.995*np.min(speed),0.995*np.max(speed),step=dv)
     fmod = interpolate.interp1d(speed,R)

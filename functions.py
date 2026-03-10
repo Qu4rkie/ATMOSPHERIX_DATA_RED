@@ -10,6 +10,7 @@ from astropy.io import fits
 import time
 import plots
 import importlib
+import sys
 
 from global_parameters import c0,h_planck,k_boltzmann
 # import reduce_encoder as encoder
@@ -28,7 +29,19 @@ def read(prm_name,dir_data_i,name_fin_i,figure_name="transit_info"):
     nord     = len(prm.orders)
     for kk in range(nord):
         list_ord.append(read_func.Order(prm.orders[kk])) ### Initialize list of Order objects
-    list_ord,airmass,T_obs,berv,snr_mat = read_func.read_data_spirou(dir_data_i,list_ord,nord)
+    
+    if prm.instrument=="SPIROU":
+        list_ord,airmass,T_obs,berv,snr_mat = read_func.read_data_spirou(dir_data_i,list_ord,nord)
+    elif prm.instrument=="NIRPS":
+        list_ord,airmass,T_obs,berv,snr_mat = read_func.read_data_nirps(dir_data_i,list_ord,nord)
+    elif prm.instrument=="IGRINS":
+        list_ord,airmass,T_obs,berv,snr_mat = read_func.read_data_igrins(dir_data_i,list_ord,nord)
+    elif prm.instrument=="HARPS":
+        list_ord,airmass,T_obs,berv,snr_mat = read_func.read_data_harps(dir_data_i,list_ord,nord)
+    else:
+        print("Instument "+str(prm.instument)+"is invalid or not implemented yet")
+    
+    #list_ord,airmass,T_obs,berv,snr_mat = read_func.read_data_spirou(dir_data_i,list_ord,nord)
     print("DONE")
 
 
@@ -50,10 +63,9 @@ def read(prm_name,dir_data_i,name_fin_i,figure_name="transit_info"):
     
     print("\nCompute window function and planet-induced RV")
 
-    
     ### Compute phase and transit window. In the emission case, the phase
     ### is the true anomaly, defined from the periastron passage time. If circular,
-    ### the peri astron time is equal to the conjonction time.
+    ### the peri astron time is equal to the conjunction time.
     if prm.type_obs=="transmission":
         phase  = (T_obs - prm.T0)/prm.Porb
         phase -= int(phase[-1])  
@@ -61,11 +73,12 @@ def read(prm_name,dir_data_i,name_fin_i,figure_name="transit_info"):
         window       = (1-flux)/np.max(1-flux)
     else:
         phase = speed_func.compute_true_anomaly(prm.Porb,prm.ep,prm.T_peri,T_obs)/2./np.pi
+        phase = np.where(phase>=0, phase, phase+1)
         if prm.transiting:
             flux     = read_func.compute_transit(prm.Rp,prm.Rs,prm.ip,prm.T0,prm.ap,prm.Porb,prm.ep,prm.wp,#
                                                      prm.ld_mod,prm.ld_coef,T_obs,ttype="secondary",T_eclipse=prm.T_eclipse,
-                                                 fp = -0.1) #jsut a trick to ease the window
-            window       = (1-flux)/np.max(1-flux)
+                                                 fp = prm.Fp)
+            window       = (flux-1)/np.max(flux-1)
         else:
             window  = np.ones(len(T_obs))
             flux  = np.ones(len(T_obs))
@@ -79,36 +92,13 @@ def read(prm_name,dir_data_i,name_fin_i,figure_name="transit_info"):
         Vstar_planet           = speed_func.rvs(phase,prm.Ks,prm.wp,prm.ep)
     Vc           = prm.V0 + Vstar_planet - berv  #Geocentric-to-barycentric correction
     
-    
+    print("DONE")
+
     
     ### Plot transit information
     if prm.plot_read:
         print("\nPlot observation information")
-        TT     = 24.*(T_obs - prm.T0)
-        ypad   = 15  # pad of the y label
-        plt.figure(figsize=(15,12))
-        # Transit flux
-        ax  = plt.subplot(411)
-        ax.plot(TT,flux,"-+r",label="planet")
-        plt.legend(loc=3,fontsize=16)
-        ax.set_ylabel("Transit curve\n", labelpad=ypad)
-        # Airmass
-        ax = plt.subplot(412)
-        plt.plot(TT,airmass,"-k")
-        ax.set_ylabel("Airmass\n", labelpad=ypad)
-        # RV correction between Geocentric frame and stellar rest frame
-        ax = plt.subplot(413)
-        plt.plot(TT,Vc,"-k")
-        ax.set_ylabel("RV correction\n[km/s]", labelpad=ypad)
-        # Maximum S/N
-        ax = plt.subplot(414)
-        plt.plot(TT,np.max(snr_mat,axis=1),"+k")
-        plt.axhline(np.mean(np.max(snr_mat,axis=1)),ls="--",color="gray")
-        plt.xlabel("Time wrt transit [h]")
-        ax.set_ylabel("Peak S/N\n", labelpad=ypad)
-        plt.subplots_adjust(hspace=0.02)
-        plt.savefig(prm.dir_figures+figure_name+".pdf",bbox_inches="tight")
-        plt.close()
+        plots.plot_transit(T_obs, phase, prm.T0, flux, airmass, Vc, snr_mat,figure_name,prm.type_obs)
         print("DONE")
     
         
@@ -195,6 +185,7 @@ def read(prm_name,dir_data_i,name_fin_i,figure_name="transit_info"):
     ##### write the parameters with the same name as the final file to keep them stored
     with open(prm.dir_save_read+name_fin_i[:-3]+"params",'w') as read_paramfile:
         write_params = "Files from" + str(dir_data_i)+"\n"
+        write_params += "Instrument =" + str(prm.instrument)+"\n"
         write_params += "Observation type = "+str(prm.type_obs)+"\n"
         write_params += "T0 = "+str(prm.T0) +"\n"
         write_params += "Porb = "+str(prm.Porb)+"\n"
@@ -226,7 +217,7 @@ def read(prm_name,dir_data_i,name_fin_i,figure_name="transit_info"):
     
     
     
-def reduce(prm_name,name_in,name_out):
+def reduce(prm_name,name_in,name_out,orders_rem=[]):
     #Import the good parameter file as input from main.py.
     prm=importlib.import_module(prm_name)
 
@@ -240,12 +231,42 @@ def reduce(prm_name,name_in,name_out):
     #Do we exclude some orders ?
     ind_rem = []
     #Do we exclude some orders ?
-    if len(prm.orders_rem)>0:
+    if len(orders_rem)>0:
         for nn in range(len(list_ord)):
-            if list_ord[nn].number in prm.orders_rem:
+            if list_ord[nn].number in orders_rem:
                 ind_rem.append(nn)
     V_corr      = vstar - berv                 ### Geo-to-bary correction
 
+    #Remove bad frames, experimental
+    phase0 = phase
+    for nn in range(len(list_ord)):
+        list_ord[nn].I_raw0 = list_ord[nn].I_raw
+    
+    if prm.select_frames:
+        print("Removing frames with low intensity")
+        #Identify frames with outlyingly low median intensities below 2-sigma
+        for nn in range(len(list_ord)):
+            Ir = list_ord[nn].I_raw
+            if nn == 0:
+                Ir_summed = Ir
+                continue
+            Ir_summed = np.concatenate((Ir_summed,Ir),axis=1)
+        mean = np.median(Ir_summed,axis=0)
+        std = np.std(Ir_summed,axis=0)
+        Ir_summed = (Ir_summed - mean)/std
+        phase_rem = np.argwhere(np.median(Ir_summed,axis=1)<-prm.sigma_frames)
+        phase_mask = np.ones_like(phase, dtype=bool)
+        for pp in phase_rem:
+            phase_mask[pp] = 0
+        
+        #remove identified phases
+        T_obs, phase, window, berv, vstar, airmass = T_obs[phase_mask], phase[phase_mask], window[phase_mask], berv[phase_mask], vstar[phase_mask], airmass[phase_mask]
+        #remove outlying spectra
+        for nn in range(len(list_ord)):
+            list_ord[nn].I_raw = list_ord[nn].I_raw[phase_mask]
+            list_ord[nn].I_atm = list_ord[nn].I_atm[phase_mask]
+            SN[nn] = SN[nn][phase_mask]
+        print("Removed Frames: " + str(phase_rem.flatten()))
 
      ### Get transits start and end indices, either prescribed or calculated
     if not prm.set_window:
@@ -271,21 +292,24 @@ def reduce(prm_name,name_in,name_out):
 
     if prm.master_from_file:
         W_ref_file = fits.open(prm.master_W_ref_file)
-        W_ref = W_ref_file[0].data
-        
+        if prm.instrument=="SPIROU":
+            W_ref = W_ref_file[0].data
+        else:
+            W_ref = W_ref_file[1].data
+
         I_ref_file = fits.open(prm.master_I_ref_file)
         I_ref = I_ref_file[1].data
 
     print("START DATA REDUCTION")
     for nn in range(nord):
         O         = list_ord[nn]
-        
+
         if  nn in ind_rem:
             continue
-        
+
         print("ORDER",O.number)
         #Start by Boucher+21 telluric correction, + remove some extreme points
-        O.W_tells,O.I_tells,O.A_tells = red_func.tellurics_and_borders(O,prm.dep_min,prm.thres_up,prm.N_bor)
+        O.W_tells,O.I_tells,O.A_tells, Am= red_func.tellurics_and_borders(O,prm.dep_min,prm.thres_up,prm.N_bor)
 
         #if not enough points, we discard
         if len(O.W_tells) < prm.Npt_lim:
@@ -293,7 +317,7 @@ def reduce(prm_name,name_in,name_out):
             print("DISCARDED\n")
             ind_rem.append(nn)
             continue
-        
+
         #Remove some outliers before first normalisation
         O.W_filt,O.I_filt,ind_px= O.filter_pixel(O.W_tells,O.I_tells,prm.deg_px,prm.sig_out)
 
@@ -332,21 +356,18 @@ def reduce(prm_name,name_in,name_out):
                 print("STELLAR CORRECTION: [",WS_corr.min(),",",WS_corr.max(),"]")
                 print("Order wavelengths: [",O.W_cl.min(),",",O.W_cl.max(),"] - Coverage:",round(cov,1),"%")
                 O.I_cl = O.correct_star(VS_corr,IS_corr,V_brog,sig_g=prm.sig_g)
-                
-                
+
         # #Delete master out of transit spectrum, in stellar and telluric fram
         if prm.delete_master:
             if prm.master_from_file:
                 W_ref_ord = W_ref[nn] 
                 I_ref_ord = I_ref[nn]
-                O.W_sub, O.I_sub = O.master_out_from_file(V_corr,W_ref_ord,
-                                                          I_ref_ord,prm.sig_g,prm.N_bor)
+                O.W_sub, O.I_sub = O.master_out_from_file(V_corr,W_ref_ord,I_ref_ord,prm.sig_g,prm.N_bor)
             else:
                 O.W_sub, O.I_sub = O.master_out(V_corr,n_ini,n_end,prm.sig_g,prm.N_bor)
         else:
             O.W_sub, O.I_sub = O.W_cl,O.I_cl
 
-        
         #second normalisation. I would recommend simple or old to delete modal noise,
         # but you can try not to do it for test. 
         if prm.second_norm_type =="simple":
@@ -396,6 +417,15 @@ def reduce(prm_name,name_in,name_out):
 
         XX    = np.where(np.isnan(np.log(O.I_fin)))[0]
         if len(XX) > 0:
+            print("Removing " + str(len(np.unique(XX))) +" / "+str(len(O.I_fin[0]))+" Bad pixels")
+            mask = np.ones_like(O.W_fin, dtype=bool)
+            px_rem = np.unique(np.argwhere(np.isfinite(np.log(O.I_fin))==False)[:,1])
+            for px in px_rem:
+                mask[px] = 0
+            O.W_fin = O.W_fin[mask]
+            O.I_fin = O.I_fin[:,mask]
+
+        if len(O.W_fin)<prm.Npt_lim:
             print("ORDER",O.number,"intractable: DISCARDED\n")
             ind_rem.append(nn)
             continue
@@ -428,9 +458,13 @@ def reduce(prm_name,name_in,name_out):
         #we can plot stuffs
         if prm.plot_red == True and O.number == prm.numb:
             print("Plot data reduction steps")
-            figure_reduce_name =  prm.dir_figures+name_out[:-4]+"_reduction_" + str(prm.numb) + ".png"
-            lab = ["Blaze-corrected spectra","Median-corrected spectra","Normalised spectra","PCA-corrected spectra"]
-            plots.plot_reduction(phase%1,O.W_cl,O.I_cl-O.I_cl.mean(),O.W_sub,O.I_sub-1.,O.W_fin,O.I_fin-1.,O.W_fin,O.I_pca,lab,figure_reduce_name)        
+            figure_reduce_name =  prm.dir_figures+"Reduction/"+name_out[:-4]+"_reduction_" + str(prm.numb) + ".png"
+            if prm.master_from_file:
+                lab = ["Blaze-corrected spectra","APERO-Corrected spectra","Normalised spectra","PCA-corrected spectra"]
+                plots.plot_reduction(phase,O.W_raw,O.W_tells,O.I_tells,O.W_sub,O.I_sub-O.I_sub.mean(),O.W_fin,O.I_fin-1.,O.W_fin,O.I_pca,Am,lab,figure_reduce_name)
+            else:        
+                lab = ["Blaze-corrected spectra","Normalised spectra","Median-Corrected spectra","PCA-corrected spectra"]
+                plots.plot_reduction(phase,O.W_raw,O.W_tells,O.I_tells,O.W_cl,O.I_cl-O.I_cl.mean(),O.W_fin,O.I_fin-1.,O.W_fin,O.I_pca,Am,lab,figure_reduce_name)
 
     file.close()        
 
@@ -440,8 +474,10 @@ def reduce(prm_name,name_in,name_out):
 
     if prm.plot_red == True:
         print("PLOT METRICS")
-        figure_metrics_name=prm.dir_figures+name_out[:-4]+"_metrics_" + str(prm.numb) + ".png"
+        figure_metrics_name=prm.dir_figures+"Reduction/"+name_out[:-4]+"_metrics.png"
         plots.plot_spectrum_dispersion(list_ord_fin,figure_metrics_name)
+        figure_reduction_tot_name=prm.dir_figures+"Reduction/"+name_out[:-4]+"_reduction_tot.png"
+        #plots.plot_reduction_tot(list_ord_fin, phase0, phase_rem, figure_reduction_tot_name)
 
         
 
@@ -477,6 +513,9 @@ def reduce(prm_name,name_in,name_out):
         if prm.corr_star:
             write_params += "Wavelength star = "+str(prm.WC_name)+"\n"
             write_params+= "Intensity star = "+str(prm.IC_name)+"\n"
+        write_params += "select_frames = "+str(prm.select_frames)+"\n"
+        if prm.select_frames:
+            write_params += "sigma_frames = "+str(prm.sigma_frames)+"\n"
         write_params += "dep_min = "+str(prm.dep_min)+"\n"
         write_params+= "thres_up = "+str(prm.thres_up)+"\n"
         write_params+= "Npt_lim = "+str(prm.Npt_lim)+"\n"
@@ -502,7 +541,7 @@ def reduce(prm_name,name_in,name_out):
 
         write_params += "Number of components = "+str(ncomp)+"\n"
         if len(prm.orders_rem)>0:
-            write_params += "orders_rem = "+str()
+            write_params += "orders_rem = "+str(prm.orders_rem)+"\n"
         write_params += "set_window = "+str(prm.set_window) +"\n"
         if prm.set_window:
             write_params += "n_ini_fix= "+str(prm.n_ini_fix) +"\n"
@@ -525,6 +564,10 @@ def correlate(prm_name):
     
     if prm.parallel:
         from mpi4py import MPI
+        import os
+        os.environ["OMP_NUM_THREADS"] = "1"
+        os.environ["OPENBLAS_NUM_THREADS"] = "1"
+        os.environ["MKL_NUM_THREADS"] = "1"
 
 
     correl_tot = []
@@ -554,6 +597,7 @@ def correlate(prm_name):
             phase2 = np.array(phase)[pos]
             window2 = np.array(window)[pos]
         
+        #print("Positions: ",pos) 
         
         #Do we calculate in parallel ?
         if prm.parallel:
@@ -564,12 +608,19 @@ def correlate(prm_name):
                 start_time = time.time()
     
             #share the orders between processors. need nproc<=len(list_ord)
-            orders_per_process = len(list_ord) // size
-            start_order = rank * orders_per_process
-            end_order = (rank + 1) * orders_per_process if rank < size - 1 else len(list_ord)
+            orders_per_process, orders_remaining = divmod(len(list_ord),size)
+            if rank<orders_remaining:
+                start_order = rank * (orders_per_process+1)
+                end_order = (rank+1) * (orders_per_process+1) - 1
+            else:
+                start_order = rank * orders_per_process + orders_remaining
+                end_order = (rank+1) * orders_per_process + orders_remaining - 1
+            #start_order = rank * orders_per_process
+            #end_order = (rank + 1) * orders_per_process if rank < size - 1 else len(list_ord)
             orders_to_process = list_ord[start_order:end_order+1]
             print('rank = ',rank, " and orders = ",orders_to_process)
-            
+            sys.stdout.flush()
+
             #Create interpolation on the processor
             F2D = corr_func.interpolate_model_parallel(F[start_order:end_order+1], wl[start_order:end_order+1], Vtot,prm.pixel_correl,prm.weights)
             
@@ -595,11 +646,13 @@ def correlate(prm_name):
                 correl_boucher =  np.zeros((prm.Nkp,prm.Nv,len(list_ord),len(phase2)))
                 #because we parallelize on the third dimension, this trick is necessary
                 for i in range(size):
-                    start = i * orders_per_process
-                    end = (i + 1) * orders_per_process if i < size - 1 else len(list_ord)
-                    correl_boucher[:,:,start:end+1] = correl_boucher_all[i]
+                    start = i * (orders_per_process+1) if i<orders_remaining else i*orders_per_process+orders_remaining
+                    end = (i + 1) * (orders_per_process+1) if i<orders_remaining else (i+1)*orders_per_process+orders_remaining
+                    correl_boucher[:,:,start:end] = correl_boucher_all[i]
                 print(np.shape(correl_boucher))
+                sys.stdout.flush()
                 print("time elapsed:", time.time()-start_time)
+                sys.stdout.flush()
                 
                 
                 
@@ -613,7 +666,7 @@ def correlate(prm_name):
                     corr_func.plot_correlation(list_ord,correl_boucher,prm.select_plot,prm.list_ord_plot_correl,
                                                prm.Kp_array,prm.Vsys_array,\
                                          prm.Kp_min_std,prm.Kp_max_std,prm.Vsys_min_std,prm.Vsys_max_std,prm.nlevels,\
-                                         prm.white_lines,prm.Kp_planet,prm.Vsys_planet)
+                                         prm.white_lines,prm.Kp_planet,prm.Vsys_planet, prm.save_ccf_indiv, prm.save_path_indiv[nobs])
             
         #or just in sequential    
         else:      
@@ -642,69 +695,70 @@ def correlate(prm_name):
                 corr_func.plot_correlation(list_ord,correl_boucher,prm.select_plot,prm.list_ord_plot_correl,
                                            prm.Kp_array,prm.Vsys_array,\
                                      prm.Kp_min_std,prm.Kp_max_std,prm.Vsys_min_std,prm.Vsys_max_std,prm.nlevels,\
-                                     prm.white_lines,prm.Kp_planet,prm.Vsys_planet)
+                                     prm.white_lines,prm.Kp_planet,prm.Vsys_planet,prm.save_ccf_indiv,prm.save_path_indiv[nobs])
 
             
         #save if you want it
         if prm.save_ccf:
-            filesave = prm.dir_correl_out+prm.correl_name_out[nobs]
-            savedata = (prm.Kp_array,prm.Vsys_array,list_ord,correl_boucher)
-            with open(filesave, 'wb') as specfile:
-                pickle.dump(savedata,specfile)
-            print("DONE")
+            if prm.parallel:
+                comm = MPI.COMM_WORLD
+                rank = comm.Get_rank()
             
-            ##### write the parameters with the same name as the final file to keep them stored
-            with open(prm.dir_correl_out+prm.correl_name_out[nobs][:-3]+"params",'w') as correl_paramfile:
-                write_params = "Reduced file : " + str(prm.dir_correl_in+prm.correl_name_in[nobs])+"\n"
-                write_params += "parallel = "+str(prm.parallel) +"\n"
-                write_params += "pixel_correl = "+str(prm.pixel_correl)+"\n"
-                write_params+= "weights = "+str(prm.weights)+"\n"
-                write_params+= "Kpmin = "+str(prm.Kpmin)+"\n"
-                write_params+= "Kpmax = "+str(prm.Kpmax)+"\n"
-                write_params+= "Nkp = "+str(prm.Nkp)+"\n"
-                write_params+= "Vsysmin = "+str(prm.Vmin)+"\n"
-                write_params+= "Vsysmax = "+str(prm.Vmax)+"\n"
-                write_params+= "Nv= "+str(prm.Nv)+"\n"
-                write_params+= "model from :  "+str(prm.dir_correl_mod)+"\n"
-                write_params+= "orders = "+str(list_ord)+"\n"
-                write_params+= "select_phase = "+str(prm.select_phase)+"\n"
-                if prm.select_phase:
-                    write_params+= "min_window = "+str(prm.min_window)+"\n"
-                write_params+= "int_speed = "+str(prm.int_speed)+"\n"
-                write_params+= "nbor_correl = "+str(prm.nbor_correl)+"\n"
-                write_params+= "use_proj= "+str(prm.use_proj)+"\n"
-                if prm.use_proj:
-                    write_params+= "proj_fast = "+str(prm.proj_fast)+"\n"
-                    write_params+= "mode_norm_pca_correl = "+str(prm.mode_norm_pca_correl)+"\n"
-                if prm.plot_ccf_indiv:
-                    write_params+= "Kpmin_std = "+str(prm.Kpmin)+"\n"
-                    write_params+= "Kpmax_std = "+str(prm.Kpmax)+"\n"
-                    write_params+= "Vsysmin_std = "+str(prm.Vmin)+"\n"
-                    write_params+= "Vsysmax_std = "+str(prm.Vmax)+"\n"
-                    write_params+= "nlevels = "+str(prm.nlevels)+"\n"
-                    write_params+= "white_lines = "+str(prm.white_lines)+"\n"
-                    write_params+= "KP_planet = "+str(prm.Kp_planet)+"\n"
-                    write_params+= "Vsys_planet = "+str(prm.Vsys_planet)+"\n"
+            if (prm.parallel==False) or (rank==0):
+                filesave = prm.dir_correl_out+prm.correl_name_out[nobs]
+                savedata = (prm.Kp_array,prm.Vsys_array,list_ord,correl_boucher)
+                with open(filesave, 'wb') as specfile:
+                    pickle.dump(savedata,specfile)
+                print("DONE")
+            
+                ##### write the parameters with the same name as the final file to keep them stored
+                with open(prm.dir_correl_out+prm.correl_name_out[nobs][:-3]+"params",'w') as correl_paramfile:
+                    write_params = "Reduced file : " + str(prm.dir_correl_in+prm.correl_name_in[nobs])+"\n"
+                    write_params += "parallel = "+str(prm.parallel) +"\n"
+                    write_params += "pixel_correl = "+str(prm.pixel_correl)+"\n"
+                    write_params+= "weights = "+str(prm.weights)+"\n"
+                    write_params+= "Kpmin = "+str(prm.Kpmin)+"\n"
+                    write_params+= "Kpmax = "+str(prm.Kpmax)+"\n"
+                    write_params+= "Nkp = "+str(prm.Nkp)+"\n"
+                    write_params+= "Vsysmin = "+str(prm.Vmin)+"\n"
+                    write_params+= "Vsysmax = "+str(prm.Vmax)+"\n"
+                    write_params+= "Nv= "+str(prm.Nv)+"\n"
+                    write_params+= "model from :  "+str(prm.dir_correl_mod)+"\n"
+                    write_params+= "orders = "+str(list_ord)+"\n"
+                    write_params+= "select_phase = "+str(prm.select_phase)+"\n"
+                    if prm.select_phase:
+                        write_params+= "min_window = "+str(prm.min_window)+"\n"
+                    write_params+= "int_speed = "+str(prm.int_speed)+"\n"
+                    write_params+= "nbor_correl = "+str(prm.nbor_correl)+"\n"
+                    write_params+= "use_proj= "+str(prm.use_proj)+"\n"
+                    if prm.use_proj:
+                        write_params+= "proj_fast = "+str(prm.proj_fast)+"\n"
+                        write_params+= "mode_norm_pca_correl = "+str(prm.mode_norm_pca_correl)+"\n"
+                    if prm.plot_ccf_indiv:
+                        write_params+= "Kpmin_std = "+str(prm.Kpmin)+"\n"
+                        write_params+= "Kpmax_std = "+str(prm.Kpmax)+"\n"
+                        write_params+= "Vsysmin_std = "+str(prm.Vmin)+"\n"
+                        write_params+= "Vsysmax_std = "+str(prm.Vmax)+"\n"
+                        write_params+= "nlevels = "+str(prm.nlevels)+"\n"
+                        write_params+= "white_lines = "+str(prm.white_lines)+"\n"
+                        write_params+= "KP_planet = "+str(prm.Kp_planet)+"\n"
+                        write_params+= "Vsys_planet = "+str(prm.Vsys_planet)+"\n"
 
-                correl_paramfile.write(write_params)
+                    correl_paramfile.write(write_params)
             
 
             
     if prm.plot_ccf_tot:
-        if len(correl_tot)>1:
-            if prm.parallel:
+        if prm.parallel:
                 comm = MPI.COMM_WORLD
                 rank = comm.Get_rank()
-                if rank ==0:
-                    corr_func.plot_correlation_tot(list_ord_tot,correl_tot,prm.select_plot,prm.list_ord_plot_correl,
-                                                   prm.Kp_array,prm.Vsys_array,\
-                                         prm.Kp_min_std,prm.Kp_max_std,prm.Vsys_min_std,prm.Vsys_max_std,prm.nlevels,\
-                                         prm.white_lines,prm.Kp_planet,prm.Vsys_planet)
-            else:
+        
+        if (prm.parallel==False) or (rank==0): 
+            if len(correl_tot)>1:
                 corr_func.plot_correlation_tot(list_ord_tot,correl_tot,prm.select_plot,prm.list_ord_plot_correl,
                                                prm.Kp_array,prm.Vsys_array,\
                                      prm.Kp_min_std,prm.Kp_max_std,prm.Vsys_min_std,prm.Vsys_max_std,prm.nlevels,\
-                                     prm.white_lines,prm.Kp_planet,prm.Vsys_planet)
+                                     prm.white_lines,prm.Kp_planet,prm.Vsys_planet,prm.save_ccf_tot,prm.save_path_tot)
     
             
         

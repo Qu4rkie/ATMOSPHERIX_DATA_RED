@@ -1,4 +1,3 @@
-
 import functions as func
 import importlib
 import sys
@@ -24,11 +23,14 @@ if prm.READ_DATA:
         func.read(prm_name,prm.dir_data[i],prm.read_name_fin[i],figure_name=figure_name) #We read the data, folder by folder
         
 if prm.REDUCE_DATA:
-    if  len(prm.reduce_name_in) != nobs or len(prm.reduce_name_out) != nobs:
-        print("reduce_name_in and reduce_name_out must be of length num_obs. Exiting")
+    if  len(prm.reduce_name_in) < nobs or len(prm.reduce_name_out) < nobs:
+        print("reduce_name_in and reduce_name_out must be of length equal or larger than num_obs. Exiting")
         sys.exit()
+    elif len(prm.reduce_name_in) != nobs or len(prm.reduce_name_out) != nobs:
+        print("Careful, reduce_name_in and reduce_name_out longer than num_obs!")
+        print("Performing reduction on first "+str(nobs)+" night(s) only\n")
     for i in range(nobs):
-        func.reduce(prm_name,prm.reduce_name_in[i],prm.reduce_name_out[i])
+        func.reduce(prm_name,prm.reduce_name_in[i],prm.reduce_name_out[i],prm.orders_rem[i])
         
 if prm.CORREL_DATA:
     if  len(prm.correl_name_in) != nobs or len(prm.correl_name_out) != nobs:

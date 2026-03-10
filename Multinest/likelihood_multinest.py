@@ -6,17 +6,13 @@ import pandas as pd
 
 
 def calc_likelihood_HR(corr,like_type):
-    
+
     try :
         (len(corr["data"]) == len(corr["model"]))
         (len(corr["data"]) == len(corr["std"]))
     except:
         raise NameError("data and model not equal")
         exit()
-    
-    
-    # plt.plot((corr["model"][0][]))
-
 
     if like_type=="Brogi":
         like = np.zeros(len(corr["data"]))
@@ -38,6 +34,9 @@ def calc_likelihood_HR(corr,like_type):
     elif like_type=="Gibson":
         like = np.zeros(len(corr["data"]))
         for i  in range(len(corr["data"])):
+            #print("Data :" +str(len(corr["data"][i])) +
+            #" / Model :" + str(len(corr["model"][i])) +
+            #" / Std :" +str(len(corr["std"][i])), flush=True)
             N = len(corr["data"][i])
             dat = np.array(corr["data"][i])-np.mean(np.array(corr["data"][i]))
             mod = np.array(corr["model"][i])-np.mean(np.array(corr["model"][i]))
@@ -90,4 +89,30 @@ def calc_likelihood_HR(corr,like_type):
         
         return liketot        
         
+def TP_prior_smooth(sigma_smooth,N,TProfile,logp_bot,logp_top):
+    """
+    Function to penalize the second derivative of the free TP profile, taken from Pelletier+2021.
+    Limitation: knots have to be uniformly distributed in log10 pressure
+
+    Parameters
+    ----------
+    sigma_smooth : float
+        Smoothing parameter in units of Kelvin per pressure dex squared.  Low for rigid TP (strong penalty).  High for flexible TP (weak penalty).
+    N : int
+        Number of TP knots fitted.
+    TProfile : array
+        Numpy array of temperature points fitted at each knot. Ordered from top of atmosphere to bottom
+    logp_bot : float
+        log_10 pressure in bars at the bottom most (highest pressure) knot fitted.
+    logp_top : float
+        log_10 pressure in bars at the upper most (lowest pressure) knot fitted.
+
+    Returns
+    -------
+    float
+        log prior penalty
+
+    """
     
+    deltalogp = np.linspace(logp_top,logp_bot,num=N,retstep=True)[1]
+    return (-1.0/(2.0*sigma_smooth**2)) * (1/(logp_bot-logp_top)) * np.sum(((TProfile[2:] - 2*TProfile[1:-1] + TProfile[:-2])**2)/(deltalogp**3)) - 0.5 * np.log(2*np.pi*sigma_smooth**2)

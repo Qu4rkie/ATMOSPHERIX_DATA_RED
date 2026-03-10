@@ -32,13 +32,15 @@ def strided_app(a, L, S ):
 
 class reduced:
 
-    def __init__(self,nord,W,Rp,R_s):
+    def __init__(self,nord,W,Rp,R_s,emission=False):
 
         self.ord  = nord  ## List of orders to be used -- after preselection
 
+        self.Wm0 = W
         self.Wm = W
         self.Rp = Rp
         self.R_s = R_s
+        self.emission = emission
 
     def convolve(self,rot_speed,superrot):
         #although it works really well, we have a mean issue due to the numerical
@@ -53,13 +55,18 @@ class reduced:
          self.Wm = rot_wl
          self.Rp = rot_Rp
 
-
+    def rotate(self, rot_speed):
+        #Convolve with rotation kernel from rot_int_cmj
+        self.Rp = conv.rot_int_cmj(self.Wm, self.Rp, rot_speed)
          
     def normalize(self,nf=501):     
         #renor
         out = np.zeros((2,np.shape(self.Wm)[0]))
         out[0] = self.Wm
-        out[1] = (self.Rp/self.R_s)**2
+        if self.emission:
+            out[1] = self.Rp
+        else:
+            out[1] = (self.Rp/self.R_s)**2
 
 
         win = np.percentile(strided_app(out[1],nf,1),0.5, axis=-1)
@@ -72,33 +79,39 @@ class reduced:
         out_final[1] = win - out[1][int((nf-1)/2):-int((nf-1)/2)]
 
         self.Wm = out_final[0]
-        self.Rp = out_final[1]
+        if self.emission:
+            self.Rp = out_final[1]*-1
+        else:
+            self.Rp = out_final[1]
 
 
         
 
 
 
-def prepare(model_dic,R_s,orderstot,winds=False,rot_speed=0.0,superrot=0.0):
+def prepare(model_dic,R_s,orderstot,winds=False,rot_speed=0.0,superrot=0.0,emission=False):
 
     models = []
+    flux_star = []
     wavelength = model_dic["wavelength_nm"]
     radius = model_dic["radius_transm"]
+    star_flux = model_dic["star_flux"]
     for i in range(len(orderstot)):
         ### First we have to select only the portion of  the model that is of interest for us
         # limits = [self.lambdas[no][0]*0.995,self.lambdas[no][1]*1.005]
         no = orderstot[i]
-        M  = reduced(no,wavelength[i],radius[i],R_s)
+        M  = reduced(no,wavelength[i],radius[i],R_s,emission)
         
         if winds:
             M.convolve(rot_speed,superrot)
-        
-        # plt.plot(wavelength[i],radius[i])
+        elif rot_speed>0:
+            M.rotate(rot_speed)
         
         M.normalize()
+        if emission:
+            flux_star.append([wavelength[i],star_flux[i]])
 
         models.append(M)
-        
 #### LRS if there is any need
     # wavelength_LR_microns = model_dic["wavelength_LR_microns"]
     # tdepth_LR = model_dic["tdepth_LR"]
@@ -107,6 +120,7 @@ def prepare(model_dic,R_s,orderstot,winds=False,rot_speed=0.0,superrot=0.0):
 
     return {
        "models": models,
+       "flux_star":flux_star
        # "interp_LR": fLR, 
        }
 

@@ -64,7 +64,7 @@ class total_model:
     """
 
     
-    def __init__(self,Kp,Vsys,models,orders,Wmean,V,phase,window,Vstar,ddv,proj):
+    def __init__(self,Kp,Vsys,models,orders,Wmean,V,phase,window,Vstar,ddv,proj,emission,flux_star):
         
         
         self.orders = orders
@@ -72,14 +72,16 @@ class total_model:
         self.models  = models   ## Model object
         self.phase = phase
         self.window = window
+
+        self.emission = emission
+        self.flux_star = flux_star
         
         self.V = V
         self.Vstar = Vstar
 
         
         self.proj = proj
-        #print(len(orders),len(self.proj))
-        #print(np.shape(self.proj[0]))       
+  
         self.Kp  = Kp  ## Values of semi-amplitude of the planet orbit for parameter search (1D vector)
         self.Vsys = Vsys   ## Values of radial velocity at mid-transit for parameter search (1D vector)
         self.ddv    = ddv  ## Vector of velocity used for the integration of the model when binned into the data sampling scheme
@@ -141,22 +143,32 @@ class total_model:
                     mask.append(n)
                     I_tmp= np.zeros(len(V_data))
                     data_tmp = np.zeros(len(V_data))
-    
+                
     			### For dd in the window centered on 0 and of 1 px width (here 2 km/s)
-                    # print(self.models[i].nord,self.Wmean[i])
+                    #print(self.models[i].nord,self.Wmean[i])
+                    #print(((V_data-DVP[n])/c0+1.0)*self.Wmean[i])
                     for dd in self.ddv:
                         #print(((V_data+dd-DVP[n])/c0+1.0)*self.Wmean[i])
                         #print(np.min(((V_data+dd-DVP[n])/c0+1.0)*self.Wmean[i]),np.max(((V_data+dd-DVP[n])/c0+1.0)*self.Wmean[i]))
                         I_tmp += self.models[i].Fm(((V_data+dd-DVP[n])/c0+1.0)*self.Wmean[i])*self.window[n] 
                     I_tmp = I_tmp/len(self.ddv)### Average values to be closer to measured values
                     #I_tmp = np.mean(I_tmp)
+                    if self.emission:
+                        star = np.interp(((V_data-self.Vstar[n])/c0+1.0)*self.Wmean[i],
+                                        self.flux_star[self.orders[i]][0], self.flux_star[self.orders[i]][1])
+                        I_tmp = I_tmp / star
+                        #print("WL_new : " + str((((V_data-self.Vstar[n])/c0+1.0)*self.Wmean[i]).shape)
+                        #    + " / WL_mod :" + str(self.flux_star[self.models[i].nord][0].shape) + " / Wl_star : "+str(self.flux_star[self.models[i].nord][1].shape), flush=True)
                     model_ret[n] = I_tmp
                 else:
                     model_ret[n] = np.zeros(len(V_data))
             try:
                 #mean_to_keep = np.mean(model_ret,axis=1)
                 #model_ret = (model_ret.T-mean_to_keep).T
+                #print("Order "+str(self.orders[i])+" Scaled Spectrum mean : "+str(np.mean(model_ret)),flush=True)
                 Il    = np.log(model_ret+1.0)
+                if len(np.where(np.isnan(Il))[0])>0:
+                    print(str(len(np.where(np.isnan(Il))[0]))+" Nans in order "+str(self.orders[i]))
                 im    = 0.0
                 ist   = 1.0 
 #                im    = np.tile(np.nanmean(Il,axis=0),(len(Il),1))
@@ -166,13 +178,12 @@ class total_model:
                 model_ret= np.exp((ff-np.matmul(self.proj[i],ff))*ist+im)-1.0
                 model_ret = model_ret.T
                 model_ret = model_ret[50:-50]
-                model_ret -= np.mean(model_ret,axis=0)
+                model_ret -= np.nanmean(model_ret,axis=0)
                 model_ret = model_ret.T
             except:
-                np.save("/home/fdebras/tmp/proj.npy",self.proj[i])
-                np.save("/home/fdebras/tmp/model_ret.npy",model_ret)
+                #np.save("/user/home/yarivv/tmp/proj.npy",self.proj[i])
+                #np.save("/user/home/yarivv/tmp/model_ret.npy",model_ret)
                 sys.exit()
-                print("oups")
                 pass
             mask = np.array(mask)
             model_tot = model_tot+(model_ret[mask].tolist())

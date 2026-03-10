@@ -23,6 +23,8 @@ import likelihood_multinest as like_HR
 import likelihood_LR as like_LR
 from priors import Priors
 
+os.environ["HDF5_USE_FILE_LOCKING"] = "FALSE"
+
 # MPI.pickle.__init__(dill.dumps, dill.loads)
 
 # def mpi_print(*args):
@@ -71,6 +73,7 @@ planet_data = runpy.run_path(args.data)["make_data"](args)
 
 
 config = dict(
+    #Radtrans Parameters
     p_minbar = -8.0,
     p_maxbar = 2.0,
     n_pressure = 130,
@@ -79,28 +82,79 @@ config = dict(
     gravity_SI= planet_data["gravity_SI"],
     P0_bar = 0.1,
     HHe_ratio=0.275,  # solar ratio
-   #the limit of the SPIRou orders
+    #Species to include in fit (format: "petitRADTRANS identifier":Molar mass)
+    line_species = {"Fe":56,"OH":17}, 
+    emission = True,  #Are we in emission or transit?
+    #Temperature profile parameters
+    temperature_profile = "parametric",
+    sigma_smooth = 300,  #smoothing parameter [K/dex^2]
+    pressure_points =np.logspace(-6,1,4),
+    #kappa_IR=0.001,
+    #gamma=10**-1.5,
+    #T_int=500,
+    #Star parameters for emission (not used in transmission)
+    system_distance = planet_data["system_distance"],
+    vsini = planet_data["vsini"],
+    wav_pheonix = "WAVE_PHOENIX-ACES-AGSS-COND-2011.fits",
+    star_pheonix = "lte06500-4.00-0.0.PHOENIX-ACES-AGSS-COND-2011-HiRes.fits",
+    #Instrument parameters (from data.py)
     lambdas = planet_data["lambdas"],
     orderstot = planet_data["orderstot"],
     pkl = planet_data["pkl"],
     #file with the reduced  datas
     num_transit = planet_data["num_transit"],
-    #the eventual presence of winds
+    #the eventual presence of winds / rotation in fit
     winds = args.winds,
     #name of the LRS file (e.g. HST or JWST) if any
-    LRS_file = planet_data["LRS_file"],
+    LRS_file = planet_data["LRS_file"]
 )
 
-unprior = dict( kappa_IR=0.001,
-        gamma=10**-1.5,
-        T_int=500,)
-
-parameters = ["Kp","Vsys","H2O","T_eq"]
+parameters = ["Kp","Vsys","Fe","OH","vrot"]
+parameters = {
+    'Kp': {
+        'prior_parameters': [150, 300],  # (km/s)
+        'prior_type': 'uniform',
+    },
+    'Vsys': {
+        'prior_parameters': [-50, 50],  # (km/s)
+        'prior_type': 'uniform',
+    },
+    'MMR_Fe': {
+        'prior_parameters': [-8, 0],  # (MMR)
+        'prior_type': 'uniform',
+    },
+    'MMR_OH': {
+        'prior_parameters': [-8, 0],  # (MMR)
+        'prior_type': 'uniform',
+    },
+    'Vrot': {
+        'prior_parameters': [0, 20],  # (km/s)
+        'prior_type': 'uniform',
+    },
+    'T1': {
+        'prior_parameters': [500, 6000],  # (K)
+        'prior_type': 'uniform',
+    },
+    'T2': {
+        'prior_parameters': [500, 6000],  # (K)
+        'prior_type': 'uniform',
+    },
+    'T3': {
+        'prior_parameters': [500, 6000],  # (K)
+        'prior_type': 'uniform',
+    },
+    'T4': {
+        'prior_parameters': [500, 6000],  # (K)
+        'prior_type': 'uniform',
+    },
+    }
 n_params = len(parameters)
 
-
-config.update(unprior)
-
+if config['temperature_profile'] == "parametric":
+    T_keys = np.array([k for k in parameters if k.startswith("T") and k[1:].isdigit()])
+    PTs = np.array([int(k[1:]) for k in T_keys])
+    if np.array(PTs).all() != np.arange(1,len(config['pressure_points'])+1).all():
+        print("Length of Temperature Points and Pressure Points do not match!")
 
 data_dic = read_d.return_data(config)
 theor_spectra = model.Model(config)
@@ -109,14 +163,16 @@ theor_spectra = model.Model(config)
 
 pri=Priors()
 def prior(cube, ndim, nparams):
-    cube[0] = pri.UniformPrior(cube[0], 50., 200.)           # uniform Kp 0:300
-    cube[1] =  pri.UniformPrior(cube[1], 0.,20.)           # un
-    cube[2] =  pri.UniformPrior(cube[2], -8., -1.0)           # un
-    cube[3] =  pri.UniformPrior(cube[3], 100.,3000.)            # un
+    for nn,parameter in enumerate(parameters):
+        cube[nn] = pri.GeneralPrior(cube[nn], PriorType=parameters[parameter]['prior_type'], 
+                    x1=parameters[parameter]['prior_parameters'][0], x2=parameters[parameter]['prior_parameters'][1])
 
 def loglike(cube, ndim, nparams):
-    Kp, Vsys,H2O,T_eq = cube[0], cube[1], cube[2],cube[3]
-    param_dic = dict(Kp=Kp, Vsys=Vsys,MMR_H2O=H2O,T_eq=T_eq)
+    param_dic = dict()
+    for nn,parameter in enumerate(parameters):
+        param_dic[parameter] = cube[nn]
+    #Kp, Vsys,H2O,T_eq = cube[0], cube[1], cube[2],cube[3]
+    #param_dic = dict(Kp=Kp, Vsys=Vsys,MMR_H2O=H2O,T_eq=T_eq)
 
     model_dic = theor_spectra.return_reduced_model(param_dic)
 
@@ -125,6 +181,16 @@ def loglike(cube, ndim, nparams):
     
     loglikelihood_HR = like_HR.calc_likelihood_HR( model_interpolated_dic, args.like)
 
+    if not np.isfinite(loglikelihood_HR):
+        print("Bad logL", loglikelihood_HR)
+
+    if config['temperature_profile'] == "parametric":
+        TP = np.array([cube[nn] for nn,parameter in enumerate(parameters) if parameter in T_keys])
+        loglikelihood_HR += like_HR.TP_prior_smooth(config["sigma_smooth"],len(config["pressure_points"]),\
+                            TP,np.min(np.log(config["pressure_points"])),np.max(np.log(config["pressure_points"])))
+
+    if not np.isfinite(loglikelihood_HR):
+        print("Bad logL - TP profile:", loglikelihood_HR)
     #### LRS if there is any need
 #    loglikelihood_LR = like_LR.return_like_LR( model_dic, data_dic)
 
@@ -133,10 +199,10 @@ def loglike(cube, ndim, nparams):
 
 
 pymultinest.run(loglike, prior, n_params,outputfiles_basename = 
-               "/home/adminloc/Bureau/Atmospheres/Pipeline_v2/ATMOSPHERIX_DATA_RED/Multinest/example/", 
-                resume = False, verbose = True,
+               "/user/home/yarivv/ATMOSPHERIX_DATA_RED/Multinest/Results/", 
+                resume =False, verbose = True,
                 n_live_points=400,
-                n_iter_before_update=1)
+                n_iter_before_update=50)
 
 
 

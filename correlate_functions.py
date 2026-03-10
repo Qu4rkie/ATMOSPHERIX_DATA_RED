@@ -15,6 +15,8 @@ from scipy import stats
 import pickle
 import time
 import speed_functions as speed
+import sys
+from tqdm import tqdm
 
 
 from global_parameters import c0
@@ -160,6 +162,7 @@ def interpolate_model_parallel(F_proc,wl_proc,Vtot,pixel_window,weights):
         f2D = PchipInterpolator(Vtot, mod_int.T,axis=1)
         F2D.append(f2D)
         print("interp advancement:",(i+1)/len(wl_proc)*100, "%")
+        sys.stdout.flush()
         
     return F2D
 
@@ -259,12 +262,14 @@ def perform_correlation(list_ord,data_tot,projtot,Stdtot,SNRtot,F2D,phase2,windo
                         np.mean(interpmod_fin[nbor:-nbor],axis=0)
                 correl_boucher[i,j,no] = np.sum(((dataij*modelij*SNRtot[no][pos]**2).T*tosum).T,axis=0)#*np.mean(OBS.snr)*np.shape(modelij)[0]
 
-        print(list_ord[no])
+        print("Order " + str(list_ord[no]) + " done")
+        sys.stdout.flush()
     return correl_boucher
 
 
 def plot_correlation(list_ord,correl_boucher,select_plot,lili,Kp,Vsys,\
-                     Kp_min_std,Kp_max_std,Vsys_min_std,Vsys_max_std,nlevels,white_lines=False,Kp_planet=0.0,Vsys_planet=0.0):
+                     Kp_min_std,Kp_max_std,Vsys_min_std,Vsys_max_std,nlevels,\
+                     white_lines=False,Kp_planet=0.0,Vsys_planet=0.0, save_ccf_indiv=False,save_path_indiv=None):
     """
     Plot correlation results.
 
@@ -330,8 +335,8 @@ def plot_correlation(list_ord,correl_boucher,select_plot,lili,Kp,Vsys,\
     plt.contourf(Vsys,Kp,correl_summed/snrmap,cmap="gist_heat",levels=nlevels)
     plt.colorbar(label="SNR")
 
-    nsigma = np.max(correl_summed/snrmap)
-    plt.contour(Vsys,Kp,correl_summed/snrmap,linestyles=["solid","dotted","dashed"],levels=[nsigma-3,nsigma-2,nsigma-1,nsigma],colors="white")
+    #nsigma = np.max(correl_summed/snrmap)
+    #plt.contour(Vsys,Kp,correl_summed/snrmap,linestyles=["solid","dotted","dashed"],levels=[nsigma-3,nsigma-2,nsigma-1,nsigma],colors="white")
 
         
 
@@ -343,12 +348,17 @@ def plot_correlation(list_ord,correl_boucher,select_plot,lili,Kp,Vsys,\
         plt.plot([Vmin,Vmax],[Kp_planet,Kp_planet],'--',color='white')
         
     plt.show()
+
+    if save_ccf_indiv:
+        plt.savefig(save_path_indiv,bbox_inches="tight")
             
 
 
   
 def plot_correlation_tot(list_tot,correl_tot,select_plot,lili,Kp,Vsys,\
-                     Kp_min_std,Kp_max_std,Vsys_min_std,Vsys_max_std,nlevels,white_lines=False,Kp_planet=0.0,Vsys_planet=0.0):
+                     Kp_min_std,Kp_max_std,Vsys_min_std,Vsys_max_std,nlevels,\
+                        white_lines=False,Kp_planet=0.0,Vsys_planet=0.0,\
+                            save_ccf_tot=False, save_path_tot=None, output=False):
     """
     Plot correlation results.
 
@@ -417,8 +427,8 @@ def plot_correlation_tot(list_tot,correl_tot,select_plot,lili,Kp,Vsys,\
     plt.contourf(Vsys,Kp,correl_summed/snrmap,cmap="gist_heat",levels=nlevels)
     plt.colorbar(label="SNR")
 
-    nsigma = np.max(correl_summed/snrmap)
-    plt.contour(Vsys,Kp,correl_summed/snrmap,linestyles=["solid","dotted","dashed"],levels=[nsigma-3,nsigma-2,nsigma-1,nsigma],colors="white")
+    #nsigma = np.max(correl_summed/snrmap)
+    #plt.contour(Vsys,Kp,correl_summed/snrmap,linestyles=["solid","dotted","dashed"],levels=[nsigma-3,nsigma-2,nsigma-1,nsigma],colors="white")
 
         
 
@@ -430,8 +440,104 @@ def plot_correlation_tot(list_tot,correl_tot,select_plot,lili,Kp,Vsys,\
         plt.plot([Vmin,Vmax],[Kp_planet,Kp_planet],'--',color='white')
         
     plt.show()
+
+    if save_ccf_tot:
+        plt.savefig(save_path_tot,bbox_inches="tight")
+    if output:
+        return correl_summed/snrmap
             
-      
+
+def plot_correlation_orders(list_ord,correl_boucher,Kp,Vsys,\
+                     Kp_min_std,Kp_max_std,Vsys_min_std,Vsys_max_std,nlevels,white_lines=False,Kp_planet=0.0,Vsys_planet=0.0):
+    """
+    Plot correlation results.
+
+    Parameters:
+
+    correl_boucher (ndarray): Correlation results.
+    list_ord (list): List of order numbers.
+
+    
+    Global parameters:
+    Kp (ndarray): Orbital semi-amplitude.
+    Vsys (ndarray): Systemic velocity.
+    
+
+    Kp_min_std (float): Minimum orbital semi-amplitude for standard deviation mask.
+    Kp_max_std (float): Maximum orbital semi-amplitude for standard deviation mask.
+    Vsys_min_std (float): Minimum systemic velocity for standard deviation mask.
+    Vsys_max_std (float): Maximum systemic velocity for standard deviation mask.
+    Vsys_planet (float): Systemic velocity of the planet.
+    Kpmin (float): Minimum orbital semi-amplitude for lines.
+    Kpmax (float): Maximum orbital semi-amplitude for lines.
+    Vmin (float): Minimum systemic velocity for lines.
+    Vmax (float): Maximum systemic velocity for lines.
+    Kp_planet (float): Orbital semi-amplitude of the planet.
+    white_lines (bool, optional): Whether to plot white lines at the position of the planet.
+    nlevels (int): Number of contour levels for the plot.
+    """ 
+    Nkp = len(Kp)
+    Nv = len(Vsys)
+    Kpmin = np.min(Kp)
+    Kpmax = np.max(Kp)
+    Vmin = np.min(Vsys)
+    Vmax = np.max(Vsys)
+
+    ncols = 7
+    nrows = int(np.ceil(len(list_ord)/ncols))
+    #
+    fig, ax = plt.subplots(nrows, ncols)
+    
+    for nord in range(len(list_ord)):
+        correl_summed = np.sum(correl_boucher[:,:,nord],axis=2)
         
+        mask_std = np.ones((Nkp,Nv),dtype=bool)
+        for i in range(Nkp):
+            for j in range(Nv):
+                if ((Kp[i]>Kp_min_std and Kp[i]<Kp_max_std) and (Vsys[j]>Vsys_min_std and Vsys[j]<Vsys_max_std)):
+                    mask_std[i,j] = False
+        c = correl_summed[mask_std]
+        snrmap = np.std((c))
+        correl_snr = correl_summed/snrmap
+        
+        i,j = divmod(nord,ncols)
+        axis = ax[i,j]
+    
+        # Same as above: uncomment first or second line
+    
+        contour = axis.contourf(Vsys,Kp,correl_snr,cmap="gist_heat",levels=nlevels)
+            
+        divider = make_axes_locatable(axis)
+        cax = divider.append_axes('right', size='5%', pad=0.05)
+        cbar = fig.colorbar(contour, cax=cax, orientation='vertical')
+        cbar.ax.tick_params(labelsize=5)
+        
+
+        if j==0:
+            axis.set_ylabel("Kp (km.s$^{-1}$)", fontsize=4)
+            axis.tick_params(labelleft=True, labelsize=4)
+        else:
+            axis.set_yticklabels([])
+            
+        if i==nrows-1:
+            axis.set_xlabel("Vsys (km.s$^{-1}$)", fontsize=4)
+            axis.tick_params(labelbottom=True, labelsize=4)
+        else:
+            axis.set_xticklabels([])
+        
+        if white_lines:
+            axis.plot([Vsys_planet,Vsys_planet],[Kpmin,Kpmax],'--',color='white')
+            axis.plot([Vmin,Vmax],[Kp_planet,Kp_planet],'--',color='white')
+        
+        axis.set_title("Order" + str(list_ord[nord]), fontsize=5, weight="bold")
+        
+        if nord == len(list_ord)-1 and j<ncols-1:
+            for j1 in np.arange(j+1,ncols,1):
+                axis=ax[i,j1]
+                axis.set_axis_off()
+                
+    #plt.tight_layout()
+    plt.show()
+    
 
 

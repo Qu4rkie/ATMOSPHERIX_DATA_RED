@@ -7,7 +7,7 @@ Created on 07/2022
 """
 
 import numpy as np
-import os
+from pathlib import Path
 import sys
 import matplotlib.pyplot as plt
 import matplotlib
@@ -52,6 +52,8 @@ def plot_transit(T_obs, phase, T0, flux, airmass, Vc, snr_mat,figure_name,type_o
             plt.xlabel("Orbital Phase")
         ax.set_ylabel("Peak S/N\n", labelpad=ypad)
         plt.subplots_adjust(hspace=0.02)
+        path = Path(figure_name)
+        path.parent.mkdir(parents=True, exist_ok=True)
         plt.savefig(figure_name,bbox_inches="tight")
         plt.close()
 
@@ -123,6 +125,7 @@ def plot_spectrum_dispersion(lord,nam_fig):
     ax3.set_ylim(0,np.max(npca)+1)
     ax3.set_ylabel("Components")
     plt.subplots_adjust(wspace=0.5,hspace = 0.)
+    os.makedirs(os.path.dirname(nam_fig), exist_ok=True)
     plt.savefig(nam_fig,bbox_inches="tight")
     plt.close()
     
@@ -229,6 +232,7 @@ def plot_reduction(phase,W0,W1,I1,W2,I2,W3,I3,W4,I4,Am,lab=["1","2","3","4"],fil
     ax.text(np.min(W4)+1.5,0.9*np.max(phase),tx,color="w",fontsize=20,fontweight="bold")
     plt.subplots_adjust(hspace=0.02,wspace=0.02)
     
+    os.makedirs(os.path.dirname(filenam), exist_ok=True)
     plt.savefig(filenam,bbox_inches="tight")
     #plt.show()
     plt.close()
@@ -292,6 +296,7 @@ def plot_reduction_tot(list_ord, phase, phase_rem, filename):
     ax2.set_ylabel("Phase")
     ax2.set_xlabel("Wavelength (nm)")
 
+    os.makedirs(os.path.dirname(filenam), exist_ok=True)
     plt.savefig(filename,bbox_inches="tight")
     plt.close()
 

@@ -12,15 +12,26 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy import interpolate
 from scipy import signal
+from scipy.ndimage import gaussian_filter1d
 
+c0 = 299792458.0        #[m/s]
 
 def rotate(R,wl,vrot,superrot,angle_super=25.0*np.pi/180,sigma=1600.0) :
+    """
+    Function to convolve the model with instrumental, rotational and/or supperrotation induced broadening
+    ---> Inputs:    -R          : Planet radius / flux array
+                    -wl         : Wavelength array
+                    -vrot       : Rotation velocity [m/s]
+                    -superrot   : Super-Rotation velocity [m/s]
+                    -angle_super: Extent of super-rotating jet [degrees]
+                    -sigma      : Instrumental broadening [m/s]
 
+    ---> Outputs    -wl_int     : Resampled wavelength array
+                    -convtot_mod: Convolved model
+    """
     if vrot<100: #we are not able to see the difference anyway , and that prevents from creating exceptions in 
     #the code
         vrot = 100
-    
-    c0 = 299792458.0
 
     #we take a kernel of size 50 000 km/s, it is exagerated but is safe
     vlim = 50000.0
@@ -136,6 +147,30 @@ def rot_int_cmj(w, s, vsini, eps=0, nr=10, ntheta=100, dif = 0.0):        #Rotat
     return ns/tarea
 
 
+def broaden(wl, spec, sigma):
+    """
+    Function to convolve model with a gaussian instrumental broadening profile
+    ---> Inputs:    -wl         : Wavelength array
+                    -spec       : Planet radius / flux array
+                    -sigma      : Gaussian broadening sigma of the instrument [m/s]
 
+    ---> Outputs    -spec_final : Convolved model resampled to the original wavelength array
+    """
+    #Resolution to resample to
+    R_log = 250000  
+    dlog_wl = 1 / R_log
+
+    #Resample wavelength and spectrum to uniform grid in log(wl)
+    log_wl = np.log(wl)
+    log_wl_uniform = np.arange(log_wl.min(), log_wl.max(), dlog_wl)
+    spec_uniform = np.interp(log_wl_uniform, log_wl, spec)
+    #convert gaussian sigma to pixels
+    sigma_pix = (sigma / c0) / dlog_wl
+    #broaden spectrum
+    spec_broadened = gaussian_filter1d(spec_uniform, sigma_pix)
+    #resample to original wavelength grid
+    spec_final = np.interp(log_wl, log_wl_uniform, spec_broadened)
+
+    return spec_final
 
 

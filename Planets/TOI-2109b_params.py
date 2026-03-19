@@ -18,8 +18,8 @@ Mjup     = 1.898e27        #[kg]
 ###############################################################################
 ### Parameters for TOI2109b
 ### Ephemerides (to compute orbital phase)
-T0         =  2453885.6888            #Mid-Transit epoch Alvaro-Montes et al, 2025
-#T0        =  2459378.459370          #Mid-Transit epoch Wong et al, 2021
+T0         =  2453885.6888            #Mid-Transit epoch [BJD-TDB] Alvaro-Montes et al, 2025 
+#T0        =  2459378.459370          #Mid-Transit epoch [BJD-TDB] Wong et al,
 Porb       =  0.67247455              #Orbital period [d] Alvaro-Montes et al, 2025
 #Porb      =  0.67247414              #Orbital period [d] Wong et al, 2021
 T_peri     =  2459378.459370          #Time of peri astron passage for an elliptical orbit

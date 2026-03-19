@@ -20,9 +20,11 @@ Mjup       = 1.898e27        #[kg]
 T0       =  2454163.22367                #Mid-Transit epoch, Zhang et al.
 Porb     =  1.21987089                      #Orbital period [d] Zhang et al.
 
-Ts       = 7430                      #Star temperature [K]
-Fp       = 0.001678                       #Planet/Star emission ratio (bb emission at 2.3 micron)
-Te       = T0 + Porb/2                    #Mid-Eclipse time 
+Ts        = 7430                      #Star temperature [K]
+Fp        = 0.001678                       #Planet/Star emission ratio (bb emission at 2.3 micron)
+T_eclipse = T0 + Porb/2                    #Mid-Eclipse time 
+
+transiting  = True  ## Only used in emission, to calculate the window function during eclipse if need be
 
 ### Transit parameters -- Compute the transit window
 ### Using batman python package https://lweb.cfa.harvard.edu/~lkreidberg/batman/
@@ -37,7 +39,7 @@ ep       = 0.0                 #Eccentricity of Pl. orbit
 wp       = 0.0                 #Arg of periaps [deg]
 ld_mod   = "quadratic"         #Limb-darkening model ["nonlinear", "quadratic", "linear"]
 ld_coef  = [0.0951,0.1586]     #Limb-darkening coefficients 
-
+T_peri   = T0
 
 ### Stellar radial velocity info
 Ks        = 0.304    #RV semi-amplitude of the star orbital motion due to planet [km/s] 

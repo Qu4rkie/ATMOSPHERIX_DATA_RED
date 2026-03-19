@@ -8,11 +8,14 @@ Created on 03/2022 12:54:11 2021
 import numpy as np
 import os
 from astropy.io import fits
+from astropy.time import Time
+from barycorrpy import get_BC_vel, JDUTC_to_BJDTDB
 from scipy.interpolate import PchipInterpolator
 from scipy.interpolate import interp1d
 from global_parameters import c0, G
 
 import batman
+import glob
 
 
 # -----------------------------------------------------------
@@ -59,11 +62,11 @@ def read_data_spirou(repp,list_ord,nord):
     for nn in range(nobs):
         nmn          = repp + "/" + str(nam_t[nn])
         hdul_t       = fits.open(nmn)
-        airmass[nn]  = float(hdul_t[0].header["AIRMASS"])
-        bjd[nn]      = float(hdul_t[1].header["BJD"])
-        berv[nn]     = float(hdul_t[1].header["BERV"])  
+        airmass[nn]  = float(hdul_t[0].header["AIRMASS"])   #airmass
+        bjd[nn]      = float(hdul_t[1].header["BJD"])       #mid-exposure time [BJD-TDB]
+        berv[nn]     = float(hdul_t[1].header["BERV"])      #Barycentric Earth Velocity [km/s]
         i            = np.array(hdul_t[1].data,dtype=float) # intensity spectrum
-        w            = np.array(hdul_t[2].data,dtype=float) # wavelength vector
+        w            = np.array(hdul_t[2].data,dtype=float) # wavelength vector [nm] - confirm unit
         bla          = np.array(hdul_t[3].data,dtype=float) # blaze vector
         atm          = np.array(hdul_t[4].data,dtype=float) # telluric spectrum
         ### Get S/N values
@@ -137,11 +140,11 @@ def read_data_nirps(repp,list_ord,nord):
         nmn          = repp + "/" + str(nam_t[nn])
         hdul_t       = fits.open(nmn)
         airmass[nn]  = (float(hdul_t[0].header["HIERARCH ESO TEL AIRM START"])
-                        +float(hdul_t[0].header["HIERARCH ESO TEL AIRM END"]))/2
-        bjd[nn]      = float(hdul_t[1].header["BJD"])
-        berv[nn]     = float(hdul_t[1].header["BERV"])  
+                        +float(hdul_t[0].header["HIERARCH ESO TEL AIRM END"]))/2 #airmass
+        bjd[nn]      = float(hdul_t[1].header["BJD"])       #mid-exposure time [BJD-TDB]
+        berv[nn]     = float(hdul_t[1].header["BERV"])      #Barycentric Earth Velocity [km/s]
         i            = np.array(hdul_t[1].data,dtype=float) # intensity spectrum
-        w            = np.array(hdul_t[2].data,dtype=float) # wavelength vector
+        w            = np.array(hdul_t[2].data,dtype=float) # wavelength vector [nm]
         bla          = np.array(hdul_t[3].data,dtype=float) # blaze vector
         atm          = np.array(hdul_t[4].data,dtype=float) # telluric spectrum
         ### Get S/N values
@@ -177,7 +180,6 @@ def read_data_nirps(repp,list_ord,nord):
 # It stores some of the relevant information into "Order" objects
 # and returns time series relevant for the analysis
 # The spectra to read must be stored in a dedicated repository
-# For the time being, the function can only read t.fits extensions 
 # -----------------------------------------------------------
 def read_data_harps(repp,list_ord,nord):
 
@@ -222,11 +224,11 @@ def read_data_harps(repp,list_ord,nord):
         nmn_raw      = repp + "/" + str(nam_raw[nn])
         hdul_raw     = fits.open(nmn_raw)
         airmass[nn]  = (float(hdul_t[0].header["HIERARCH ESO TEL AIRM START"])
-                        +float(hdul_t[0].header["HIERARCH ESO TEL AIRM END"]))/2
-        bjd[nn]      = float(hdul_t[0].header["HIERARCH ESO QC BJD"])
-        berv[nn]     = float(hdul_t[0].header["HIERARCH ESO QC BERV"])  
-        i            = np.array(hdul_raw[1].data,dtype=float) # intensity spectrum - raw
-        w            = np.array(hdul_t[4].data,dtype=float) / 10 # wavelength vector [nm]
+                        +float(hdul_t[0].header["HIERARCH ESO TEL AIRM END"]))/2 #airmass
+        bjd[nn]      = float(hdul_t[0].header["HIERARCH ESO QC BJD"])           # mid-exposure time [BJD-TDB] - check this is indeed in TDB
+        berv[nn]     = float(hdul_t[0].header["HIERARCH ESO QC BERV"])          # Barycentric Earth Velocity [km/s]
+        i            = np.array(hdul_raw[1].data,dtype=float)                   # intensity spectrum - raw
+        w            = np.array(hdul_t[4].data,dtype=float) / 10                # wavelength vector [nm]
         bla          = np.array(hdul_raw[1].data/hdul_t[1].data,dtype=float) # blaze vector - computed from blaze corrected
         atm          = np.ones_like(i) # telluric spectrum - no telluric correction for the moment
         ### Get S/N values
@@ -255,6 +257,187 @@ def read_data_harps(repp,list_ord,nord):
     
     return list_ord,airmass,bjd,berv,snr_mat
 
+def read_data_igrins(repp, list_ord, nord, fmt="PLP"):
+    """
+    --> Inputs:     - repp:      Path to the directory containing all the '.fits' files to read
+                                 NOTE: files must be ordered in the chronologic order
+                    - list_ord:  List of Order object
+                    - nord:      Number of orders -- 54 for IGRINS
+                    - fmt:       Format of the fits files -- allowed values:
+                                 "PLP" for data reduced with IGRINS PLP (default)
+                                 "GOA" for science quality data downloaded from Gemini Observatory Archive
+
+    --> Outputs:    - Attributes of Order objects:
+                      1. W_raw (Wavelengths vectors)            [microns]
+                      2. I_raw (Time series of spectra)
+                      3. blaze (Time series of blaze functions) - coming soon tm
+                      4. A_raw (Time series of telluric spectra)  - coming soon tm
+                      5. SNR (list of order S/N values for all observations)
+                    - list_ord: upgraded list of orders
+                    - airmass: airmass value for each observation
+                    - bjd: time vector
+                    - snr_mat: 2D matrix containing the S/N value for each observation and order (N_observation,N_order)
+    """
+    
+    ### Get all data to read
+    if fmt == 'PLP':
+        #Indexes for Wavelength and spectrum
+        datidx, wlidx = 0,1
+        #Spectrum files
+        specfilesH=sorted(glob.glob(repp+'*SDCH*spec.fits'))
+        specfilesK=sorted(glob.glob(repp+'*SDCK*spec.fits'))
+
+        #remove .sum.spec files for IGRINS-2 PLP
+        specfilesH = [file for file in specfilesH if "sum" not in file]
+        specfilesK = [file for file in specfilesK if "sum" not in file]
+
+        #Variance files
+        varfilesH=sorted(glob.glob(repp+'*SDCH*variance.fits'))
+        varfilesK=sorted(glob.glob(repp+'*SDCK*variance.fits'))
+
+        varfilesH = [file for file in varfilesH if "sum" not in file]
+        varfilesK = [file for file in varfilesK if "sum" not in file]
+
+        #SNR files
+        snfilesH=sorted(glob.glob(repp+'*SDCH*sn.fits'))
+        snfilesK=sorted(glob.glob(repp+'*SDCK*sn.fits'))
+
+        snfilesH = [file for file in snfilesH if "sum" not in file]
+        snfilesK = [file for file in snfilesK if "sum" not in file]
+
+        assert len(specfilesH)==len(varfilesH)==len(specfilesK)==len(varfilesK), "Unequal no. of H and K files"
+    elif fmt == "GOA":
+        #Indexes for Wavelength and spectrum
+        datidx, wlidx = 1, 3
+
+        #GOA files contain all the info need
+        specfilesH = sorted(glob.glob(repp+'*_H.spec.*'))
+        specfilesK = sorted(glob.glob(repp+'*_K.spec.*'))
+
+        assert len(specfilesH)==len(specfilesK), "Unequal no. of H and K files"
+    else :
+        print("Format '" + str(fmt) + "' unknown")
+
+    ### Construct Wavelength grid from final spec file
+    wlfile = fits.open(specfilesH[-1])  
+    wlensH = wlfile[wlidx].data                  #wavelengths [microns]
+    wlfile = fits.open(specfilesK[-1])
+    wlensK = wlfile[wlidx].data                  #wavelengths [microns]
+    wlens  = np.concatenate([wlensK,wlensH]) #descending order
+    wlens  = wlens[::-1,:]                   #ascending order
+
+
+    ### Initialisation
+    ndet, npix = wlens.shape
+    time_JD    = np.zeros(len(specfilesH))
+    airmass    = np.zeros_like(time_JD)
+    humidity   = np.zeros_like(time_JD)
+    data_RAW   = np.zeros((ndet,len(specfilesH),npix))
+    data_var   = np.zeros_like(data_RAW)
+    data_snr   = np.zeros_like(data_RAW)
+
+
+    ### open and read files -- arrange data into spectral matrix
+    for ifile in range(len(specfilesH)):
+        #H-band
+        hdu_listH = fits.open(specfilesH[ifile])
+        image_dataH = hdu_listH[datidx].data
+
+        #K-band
+        hdu_listK = fits.open(specfilesK[ifile])
+        image_dataK = hdu_listK[datidx].data
+
+        #SNR and variances
+        if fmt == "PLP":
+            #H-band
+            hdu_list   = fits.open(varfilesH[ifile])
+            var_H = hdu_list[0].data
+            hdu_list   = fits.open(snfilesH[ifile])
+            snr_H  = hdu_list[0].data
+
+            #K-band
+            hdu_list = fits.open(varfilesK[ifile])
+            var_K = hdu_list[0].data
+            hdu_list   = fits.open(snfilesK[ifile])
+            snr_K  = hdu_list[0].data
+        elif fmt == "GOA":
+            #H-band
+            var_H = hdu_listH[2].data
+            snr_H = image_dataH / np.sqrt(var_H)
+            #K-band
+            var_K = hdu_listK[2].data
+            snr_K = image_dataK / np.sqrt(var_K)
+
+        #Date, airmass, humidity info
+        hdr = hdu_listK[0].header
+        instrument = hdr["INSTRUME"]
+        if instrument=="IGRINS":
+            time_JD[ifile] = 0.5 * (hdr["JD-OBS"] + hdr["JD-END"]) # mid-exposure time, JD UTC
+            humidity[ifile] = hdr['HUMIDITY']                      # humidity
+        else:
+            frame_start = Time(hdr['UTSTART'], format="isot", scale="utc")
+            frame_end = Time(hdr['UTEND'], format="isot", scale="utc")
+            time_JD[ifile] = 0.5 * (frame_start.jd + frame_end.jd)
+
+        airmass[ifile] = 0.5 * (hdr['AMSTART']+hdr['AMEND'])     # average airmass
+
+        #concatenating K and H spectra
+        data = np.concatenate([image_dataK,image_dataH])
+        var  = np.concatenate([var_K,var_H])
+        snr   = np.concatenate([snr_K,snr_H])
+        data_RAW[:,ifile,:] = data # master matrix
+        data_var[:,ifile,:] = var
+        data_snr[:,ifile,:]  = snr
+
+    #invert arrays - ascending order in wavelength
+    data_RAW = data_RAW[::-1,:,:]
+    data_var = data_var[::-1,:,:]
+    data_snr  = data_snr[::-1,:,:]
+
+    # compute barycentric correction
+    print("\ncompute barycentric velocities")
+    location = wlfile[0].header['TELESCOP']                                 #Observatory name (Gemini-N/S)
+    if location == 'Gemini-North':
+        location = 'gemini_north'
+        RA, DEC = wlfile[0].header['RA'], wlfile[0].header['DEC']           #Object RA, DEC [degrees]
+    elif location == 'Gemini-South':
+        location='gemini_south'
+        RA, DEC = wlfile[0].header['OBJRA'], wlfile[0].header['OBJDEC']      #Object RA, DEC [degrees]
+    try:
+        pmRA  = float(wlfile[0].header["PMRA"])*1e3 
+        pmDEC = float(wlfile[0].header["PMDEC"])*1e3    #proper motion if any [mas/y]
+    except:
+        pmRA, pmDEC = 0, 0                              #if none set to 0
+
+    time_JD = Time(time_JD, format="jd", scale="utc")
+    bjd, warning, status = JDUTC_to_BJDTDB(JDUTC = time_JD, ra=RA, dec=DEC, pmra=pmRA, pmdec=pmDEC, obsname=location)
+    if status==2:
+        print(warning)
+    berv, warning, status = get_BC_vel(JDUTC = time_JD, ra=RA, dec=DEC, pmra=pmRA, pmdec=pmDEC, obsname=location)
+    if status==2:
+        print(warning)
+    bjd = np.array(bjd)                 #Observation time in BJD TDB
+    berv = np.array(berv) / 1e3         #Barycentric Earth Velocity [km/s]
+    
+    #average SNR over each order
+    snr_mat   = np.nanmean(data_snr,axis=2)
+    #duplicate wavelength array to each integration sequence
+    wl_raw    = np.zeros_like(data_RAW)
+    for nn in range(len(bjd)):
+        wl_raw[:,nn,:] = wlens
+    
+    
+    for mm in range(nord):
+        O       = list_ord[mm]
+        blaze   = np.ones_like(data_RAW[mm])
+        atm     = np.ones_like(data_RAW[mm])
+        O.SNR   = np.array(snr_mat[mm],dtype=float)
+        O.W_raw = np.array(wl_raw[mm],dtype=float)
+        O.I_raw = np.array(data_RAW[mm],dtype=float)
+        O.blaze = np.array(blaze,dtype=float)
+        O.I_atm = np.array(atm,dtype=float)
+    
+    return list_ord,airmass,bjd,berv,snr_mat.T
 
 # -----------------------------------------------------------
 # Get transit window -- requires batman python module

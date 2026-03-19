@@ -17,7 +17,7 @@ import time
 import speed_functions as speed
 import sys
 from tqdm import tqdm
-
+import os
 
 from global_parameters import c0
 
@@ -350,6 +350,7 @@ def plot_correlation(list_ord,correl_boucher,select_plot,lili,Kp,Vsys,\
     plt.show()
 
     if save_ccf_indiv:
+        os.makedirs(os.path.dirname(save_path_indiv), exist_ok=True)
         plt.savefig(save_path_indiv,bbox_inches="tight")
             
 
@@ -442,6 +443,7 @@ def plot_correlation_tot(list_tot,correl_tot,select_plot,lili,Kp,Vsys,\
     plt.show()
 
     if save_ccf_tot:
+        os.makedirs(os.path.dirname(save_path_indiv), exist_ok=True)
         plt.savefig(save_path_tot,bbox_inches="tight")
     if output:
         return correl_summed/snrmap

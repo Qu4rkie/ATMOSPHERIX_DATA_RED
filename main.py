@@ -3,7 +3,7 @@ import importlib
 import sys
 
 # prm_name = input("Parameter file: ")
-prm_name = "parameters"
+prm_name = "parameters_wasp33"
 prm = importlib.import_module(prm_name)
 nobs = prm.num_obs
 

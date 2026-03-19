@@ -34,12 +34,12 @@ def read(prm_name,dir_data_i,name_fin_i,figure_name="transit_info"):
         list_ord,airmass,T_obs,berv,snr_mat = read_func.read_data_spirou(dir_data_i,list_ord,nord)
     elif prm.instrument=="NIRPS":
         list_ord,airmass,T_obs,berv,snr_mat = read_func.read_data_nirps(dir_data_i,list_ord,nord)
-    elif prm.instrument=="IGRINS":
-        list_ord,airmass,T_obs,berv,snr_mat = read_func.read_data_igrins(dir_data_i,list_ord,nord)
+    elif (prm.instrument=="IGRINS") or (prm.instrument=="IGRINS-2"):
+        list_ord,airmass,T_obs,berv,snr_mat = read_func.read_data_igrins(dir_data_i,list_ord,nord,prm.fmt)
     elif prm.instrument=="HARPS":
         list_ord,airmass,T_obs,berv,snr_mat = read_func.read_data_harps(dir_data_i,list_ord,nord)
     else:
-        print("Instument "+str(prm.instument)+"is invalid or not implemented yet")
+        print("Instrument "+str(prm.instrument)+"is invalid or not implemented yet")
     
     #list_ord,airmass,T_obs,berv,snr_mat = read_func.read_data_spirou(dir_data_i,list_ord,nord)
     print("DONE")
@@ -85,6 +85,7 @@ def read(prm_name,dir_data_i,name_fin_i,figure_name="transit_info"):
             
     print("DONE")
     print(window)
+    print(berv.shape)
     ### Compute Planet-induced RV
     if prm.ep <1e-3:
         Vstar_planet           = speed_func.rvs_circular(phase,prm.Ks)
@@ -458,7 +459,7 @@ def reduce(prm_name,name_in,name_out,orders_rem=[]):
         #we can plot stuffs
         if prm.plot_red == True and O.number == prm.numb:
             print("Plot data reduction steps")
-            figure_reduce_name =  prm.dir_figures+"Reduction/"+name_out[:-4]+"_reduction_" + str(prm.numb) + ".png"
+            figure_reduce_name =  prm.dir_figures+"Reduction/"+prm.sort_dir+name_out[:-4]+"_order_" + str(prm.numb) + ".png"
             if prm.master_from_file:
                 lab = ["Blaze-corrected spectra","APERO-Corrected spectra","Normalised spectra","PCA-corrected spectra"]
                 plots.plot_reduction(phase,O.W_raw,O.W_tells,O.I_tells,O.W_sub,O.I_sub-O.I_sub.mean(),O.W_fin,O.I_fin-1.,O.W_fin,O.I_pca,Am,lab,figure_reduce_name)
@@ -474,10 +475,11 @@ def reduce(prm_name,name_in,name_out,orders_rem=[]):
 
     if prm.plot_red == True:
         print("PLOT METRICS")
-        figure_metrics_name=prm.dir_figures+"Reduction/"+name_out[:-4]+"_metrics.png"
+        figure_metrics_name=prm.dir_figures+"Reduction/"+prm.sort_dir+name_out[:-4]+"_metrics.png"
         plots.plot_spectrum_dispersion(list_ord_fin,figure_metrics_name)
-        figure_reduction_tot_name=prm.dir_figures+"Reduction/"+name_out[:-4]+"_reduction_tot.png"
-        #plots.plot_reduction_tot(list_ord_fin, phase0, phase_rem, figure_reduction_tot_name)
+    if prm.plot_reduction_tot:
+        figure_reduction_tot_name=prm.dir_figures+"Reduction/"+prm.sort_dir+name_out[:-4]+"_reduction_tot.png"
+        plots.plot_reduction_tot(list_ord_fin, phase0, phase_rem, figure_reduction_tot_name)
 
         
 

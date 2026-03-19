@@ -58,16 +58,16 @@ class reduced:
     def rotate(self, rot_speed):
         #Convolve with rotation kernel from rot_int_cmj
         self.Rp = conv.rot_int_cmj(self.Wm, self.Rp, rot_speed)
+    
+    def broaden(self, sigma):
+        #Convolve with instrumental broadening kernel of half-width sigma (in m/s)
+        self.Rp = conv.broaden(self.Wm, self.Rp, sigma)
          
     def normalize(self,nf=501):     
         #renor
         out = np.zeros((2,np.shape(self.Wm)[0]))
         out[0] = self.Wm
-        if self.emission:
-            out[1] = self.Rp
-        else:
-            out[1] = (self.Rp/self.R_s)**2
-
+        out[1] = (self.Rp/self.R_s)**2
 
         win = np.percentile(strided_app(out[1],nf,1),0.5, axis=-1)
         try :
@@ -78,18 +78,16 @@ class reduced:
         out_final[0]  = out[0][int((nf-1)/2):-int((nf-1)/2)]
         out_final[1] = win - out[1][int((nf-1)/2):-int((nf-1)/2)]
 
+
         self.Wm = out_final[0]
-        if self.emission:
-            self.Rp = out_final[1]*-1
-        else:
-            self.Rp = out_final[1]
+        self.Rp = out_final[1]
 
 
         
 
 
 
-def prepare(model_dic,R_s,orderstot,winds=False,rot_speed=0.0,superrot=0.0,emission=False):
+def prepare(model_dic,R_s,orderstot,sigma,winds=False,rot_speed=0.0,superrot=0.0,emission=False):
 
     models = []
     flux_star = []
@@ -102,14 +100,18 @@ def prepare(model_dic,R_s,orderstot,winds=False,rot_speed=0.0,superrot=0.0,emiss
         no = orderstot[i]
         M  = reduced(no,wavelength[i],radius[i],R_s,emission)
         
+        #Apply rotation/wind kernel if included
         if winds:
-            M.convolve(rot_speed,superrot)
-        elif rot_speed>0:
-            M.rotate(rot_speed)
+            M.convolve(rot_speed,superrot,sigma=sigma) #rotation + winds + instrumental broadening
+        else:
+            if rot_speed>0:
+                M.rotate(rot_speed)     #rotation only, faster
+            M.broaden(sigma)        #instrumental broadening
         
-        M.normalize()
         if emission:
             flux_star.append([wavelength[i],star_flux[i]])
+        else:
+            M.normalize()       #may need another version of this for emission?
 
         models.append(M)
 #### LRS if there is any need

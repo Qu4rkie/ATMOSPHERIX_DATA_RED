@@ -10,6 +10,7 @@ Requirements: Python 3 modules
 - batman: https://lweb.cfa.harvard.edu/~lkreidberg/batman/ . Be very careful !!! Don't do pip install batman but pip install batman-package
 - astropy
 - wpca (not necessary but recommended)
+- barrycorrpy (for IGRINS data)
 
 If you want to run the nested sampling algorithm, you will also need petitRADTRANS and pymultinest (and necessarily multinest). We refer you to pymultinest documentation: https://johannesbuchner.github.io/PyMultiNest/) 
 

@@ -2,16 +2,16 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import scipy.signal
-
+import os
 
 
 type_obs = "emission"
 #type_obs = "transmission"
 
-READ_DATA = False   #do you want to read some t.fits files ?
+READ_DATA = True   #do you want to read some t.fits files ?
 INJ_PLANET = False  #do you want to inject a planet ?
-REDUCE_DATA = True #do you want to reduce one or several pkl file that has been read beforehand ?
-CORREL_DATA = True  #do you want to perform correlation from reduced pkl files ? 
+REDUCE_DATA = False #do you want to reduce one or several pkl file that has been read beforehand ?
+CORREL_DATA = False  #do you want to perform correlation from reduced pkl files ? 
 
 dir_data = "/group/exoplanetes/Observations/"
 dir_global = "/user/home/yarivv/ATMOSPHERIX_DATA_RED/"
@@ -19,19 +19,21 @@ dir_global = "/user/home/yarivv/ATMOSPHERIX_DATA_RED/"
 ### Directory to save figures if plot = True
 dir_figures = dir_global+"Figures/"
 
-num_obs = 4 #Number of observing nights that will be treated independently
+num_obs = 1 #Number of observing nights that will be treated independently
 #before being added up in the correlation
 
 #Choose instrument
-instrument="SPIROU"  #allowed values "SPIROU", "NIRPS", "HARPS", "IGRINS" (soon tm)
+instrument="IGRINS-2"   #allowed values "SPIROU", "NIRPS", "HARPS", "IGRINS", "IGRINS-2"
+fmt = "GOA"             #format of fits files: IGRINS - "PLP" or "GOA" ; NIRPS - "APERO" or "DRS" (soon tm)
 
 #Choose planet and import parameters to read data
-planet_name = "TOI-2109b"
+planet_name = "WASP-33b"
 planet_file = dir_global + "Planets/" + planet_name + "_params.py"
 
 with open(planet_file) as file:
     exec(file.read())
 
+sort_dir = f"{instrument} / {planet_name} /"
 ###########################################################################
 ###########################################################################
 ################### PARAMETERS TO READ DATA
@@ -41,15 +43,17 @@ with open(planet_file) as file:
 
 ### Directory where all the "t.fits" files are stores 
 dir_data = [
+    dir_data+"Data/IGRINS-2/WASP-33/2025-08-24_Ingress/",
+
     #dir_data+"Data/NIRPS/APERO/TOI-2109/2023-04-30/",
     #dir_data + "Data/Data_Challenge/WASP76b_H2O_CO_in_WASP107/data_with_injected_synthetic",
-    dir_data+"Data/NIRPS/APERO/TOI-2109/2023-05-14/",
+    #dir_data+"Data/NIRPS/APERO/TOI-2109/2023-05-14/",
     #dir_data+"Data/NIRPS/APERO/TOI-2109/2025-04-29/",
-    dir_data+"Data/NIRPS/APERO/TOI-2109/2025-05-06/",
-    dir_data+"Data/NIRPS/APERO/TOI-2109/2025-05-08/",
-    dir_data+"Data/NIRPS/APERO/TOI-2109/2025-05-10/",
-    dir_data+"Data/NIRPS/APERO/TOI-2109/2025-06-06/",
-    dir_data+"Data/NIRPS/APERO/TOI-2109/2025-06-29/",
+    #dir_data+"Data/NIRPS/APERO/TOI-2109/2025-05-06/",
+    #dir_data+"Data/NIRPS/APERO/TOI-2109/2025-05-08/",
+    #dir_data+"Data/NIRPS/APERO/TOI-2109/2025-05-10/",
+    #dir_data+"Data/NIRPS/APERO/TOI-2109/2025-06-06/",
+    #dir_data+"Data/NIRPS/APERO/TOI-2109/2025-06-29/",
 
     #dir_data+"Data/SPIROU/TOI-2109/2025-06-04",
     #dir_data+"Data/SPIROU/TOI-2109/2025-06-07",   #Day
@@ -72,17 +76,18 @@ dir_data = [
         ]
 
 ### Name of the pickle file to store the info in 
-dir_save_read = dir_global+"pickle/read/"
+dir_save_read = dir_global+"pickle/read/"+sort_dir
 read_name_fin = [
+    "WASP33_24-08-25_IGRINS.pkl"
     #"TOI2109_30-04-23_NIRPS_read.pkl",
     #"WASP76_in_WASP107_read.pkl",
-    "TOI2109_14-05-23_NIRPS_read.pkl",
+    #"TOI2109_14-05-23_NIRPS_read.pkl",
     #"TOI2109_29-04-25_NIRPS_read.pkl",
-    "TOI2109_06-05-25_NIRPS_read.pkl",
-    "TOI2109_08-05-25_NIRPS_read.pkl",
-    "TOI2109_10-05-25_NIRPS_read.pkl",
-    "TOI2109_06-06-25_NIRPS_read.pkl",
-    "TOI2109_29-06-25_NIRPS_read.pkl",
+    #"TOI2109_06-05-25_NIRPS_read.pkl",
+    #"TOI2109_08-05-25_NIRPS_read.pkl",
+    #"TOI2109_10-05-25_NIRPS_read.pkl",
+    #"TOI2109_06-06-25_NIRPS_read.pkl",
+    #"TOI2109_29-06-25_NIRPS_read.pkl",
 
     #"TOI2109_04-06-25_SPIROU_read.pkl",
     #"TOI2109_07-06-25_SPIROU_read.pkl",
@@ -110,9 +115,9 @@ if instrument == "SPIROU":
 elif instrument == "NIRPS":
     ### List of NIRPS absolute orders -- Reddest: 0; Bluest: 74
     orders   =  np.arange(0,75)[::-1].tolist()
-elif instrument == "IGRINS":
+elif (instrument == "IGRINS") or (instrument == "IGRINS-2"):
     ### List of IGRINS orders -- Reddest: 53; Bluest: 0
-    orders   =  np.arange(0,54).tolist()
+    orders   =  np.arange(0,53).tolist()    #check this works on both
 elif instrument == "HARPS":
     ### List of HARPS orders -- Reddest: 71; Bluest: 0
     orders   =  np.arange(0,71).tolist()
@@ -122,7 +127,7 @@ nord = len(orders)
 plot_read     = True     # If True, plot transit info
 figure_name_transit = []
 for pkl_name in read_name_fin:
-    figure_name_transit.append(dir_figures+"Transit/transit_"+pkl_name[:-4]+".png")
+    figure_name_transit.append(dir_figures+"Transit/"+sort_dir+pkl_name[:-4]+".png")
 
 
 ###########################################################################
@@ -153,8 +158,8 @@ amp_inj = 1.
 ###########################################################################
 ###########################################################################
 
-dir_reduce_in = dir_global+"pickle/read/"
-dir_reduce_out = dir_global+"pickle/reduced/"
+dir_reduce_in = dir_global+"pickle/read/"+sort_dir
+dir_reduce_out = dir_global+"pickle/reduced/"+sort_dir
 reduce_name_in = [    
     #"TOI2109_30-04-23_NIRPS_read.pkl", 
     #"WASP76_in_WASP107_read.pkl",                 
@@ -310,11 +315,13 @@ npca        = np.array(5*np.ones(nord),dtype=int)
 ### Plot info
 plot_red    = True
 numb        = 33 #e.g. 46 for SPIROU, 15 for NIRPS - 65 for H Band
-    
+### Summary Plot with all orders pre & post reduction 
+### (takes a long time to plot so better just for paper-ready reduction or debugging if needed)
+plot_reduction_tot = True 
 
 #If you want to remove some orders, put them here
-orders_rem     = [[55], [55], [55,56], [55,56],[],[],[],[],[]]
-#[25,24,23,22,21,20] NIRPS
+orders_rem     = [[], [], [], [],[],[],[],[],[]]
+#[25,24,23,22,21,20] NIRPS / [55]x2 [55,56]x2 for SPIRou daysides with APERO master
 
 ### Size of the estimation of the std of the order for final metrics
 N_px          = 200
@@ -335,7 +342,7 @@ elif instrument=="NIRPS":
     pixel_correl = np.linspace(-0.48,0.48,15)
 elif instrument=="HARPS":
     pixel_correl = np.linspace(-0.41,0.41,15)
-elif instrument=="IGRINS":
+elif (instrument=="IGRINS") or (instrument=="IGRINS-2"):
     pixel_correl = np.linspace(-1.0,1.0,15)
 weights= np.ones(15)
 
@@ -353,7 +360,7 @@ Vsys_array = np.linspace(Vmin,Vmax,Nv)
 
 #Number of pkl observations files and their names
 
-dir_correl_in = dir_global+"pickle/reduced/"
+dir_correl_in = dir_global+"pickle/reduced/"+sort_dir
 
 
 correl_name_in = [    
@@ -390,7 +397,7 @@ correl_name_in = [
 
 #Do we save the correlation file ? If yes, put as much files as there are observations
 save_ccf = True
-dir_correl_out = dir_global+"pickle/correlated/"
+dir_correl_out = dir_global+"pickle/correlated/"+sort_dir
 
 
 correl_name_out = [    
@@ -482,39 +489,39 @@ plot_ccf_tot = True
 save_ccf_tot = True
 
 save_path_indiv = [
-    #dir_figures + "CCF/TOI2109_30-04-23_Fe.png",
-    #dir_figures + "CCF/WASP76_in_WASP107.png",
-    #dir_figures + "CCF/TOI2109_14-05-23_NIRPS_5pc_Fe_scarlet_broad.png",
-    #dir_figures + "CCF/TOI2109_29-04-25_NIRPS_5pc_Fe_broad.png",
-    #dir_figures + "CCF/TOI2109_06-05-25_NIRPS_5pc_OH_apero_mask.png",
-    #dir_figures + "CCF/TOI2109_08-05-25_NIRPS_5pc_OH_apero_mask.png",
-    #dir_figures + "CCF/TOI2109_10-05-25_NIRPS_5pc_OH_apero_mask.png",
-    #dir_figures + "CCF/TOI2109_06-06-25_NIRPS_5pc_OH_apero_mask.png",
-    #dir_figures + "CCF/TOI2109_29-06-25_NIRPS_5pc_Fe_scarlet_broad.png",
+    #dir_figures + "CCF/"+sort_dir+"TOI2109_30-04-23_Fe.png",
+    #dir_figures + "CCF/"+sort_dir+"WASP76_in_WASP107.png",
+    #dir_figures + "CCF/"+sort_dir+"TOI2109_14-05-23_NIRPS_5pc_Fe_scarlet_broad.png",
+    #dir_figures + "CCF/"+sort_dir+"TOI2109_29-04-25_NIRPS_5pc_Fe_broad.png",
+    #dir_figures + "CCF/"+sort_dir+"TOI2109_06-05-25_NIRPS_5pc_OH_apero_mask.png",
+    #dir_figures + "CCF/"+sort_dir+"TOI2109_08-05-25_NIRPS_5pc_OH_apero_mask.png",
+    #dir_figures + "CCF/"+sort_dir+"TOI2109_10-05-25_NIRPS_5pc_OH_apero_mask.png",
+    #dir_figures + "CCF/"+sort_dir+"TOI2109_06-06-25_NIRPS_5pc_OH_apero_mask.png",
+    #dir_figures + "CCF/"+sort_dir+"TOI2109_29-06-25_NIRPS_5pc_Fe_scarlet_broad.png",
 
-    #dir_figures + "CCF/TOI2109_04-06-25_SPIROU_OH_5pc.png",
-    dir_figures + "CCF/TOI2109_07-06-25_SPIROU_CO_5pc_APERO.png",
-    #dir_figures + "CCF/TOI2109_08-06-25_SPIROU_Fe_broad_5pc.png",
-    dir_figures + "CCF/TOI2109_09-06-25_SPIROU_CO_5pc_APERO.png",
-    #dir_figures + "CCF/TOI2109_10-06-25_SPIROU_Fe_broad_5pc.png",
-    #dir_figures + "CCF/TOI2109_09-07-25_SPIROU_Fe_broad_5pc.png",
-    dir_figures + "CCF/TOI2109_10-07-25_SPIROU_CO_5pc_APERO.png",
-    #dir_figures + "CCF/TOI2109_13-07-25_SPIROU_Fe_broad_5pc.png",
-    dir_figures + "CCF/TOI2109_14-07-25_SPIROU_CO_5pc_APERO.png",
+    #dir_figures + "CCF/"+sort_dir+"TOI2109_04-06-25_SPIROU_OH_5pc.png",
+    dir_figures + "CCF/"+sort_dir+"TOI2109_07-06-25_SPIROU_CO_5pc_APERO.png",
+    #dir_figures + "CCF/"+sort_dir+"TOI2109_08-06-25_SPIROU_Fe_broad_5pc.png",
+    dir_figures + "CCF/"+sort_dir+"TOI2109_09-06-25_SPIROU_CO_5pc_APERO.png",
+    #dir_figures + "CCF/"+sort_dir+"TOI2109_10-06-25_SPIROU_Fe_broad_5pc.png",
+    #dir_figures + "CCF/"+sort_dir+"TOI2109_09-07-25_SPIROU_Fe_broad_5pc.png",
+    dir_figures + "CCF/"+sort_dir+"TOI2109_10-07-25_SPIROU_CO_5pc_APERO.png",
+    #dir_figures + "CCF/"+sort_dir+"TOI2109_13-07-25_SPIROU_Fe_broad_5pc.png",
+    dir_figures + "CCF/"+sort_dir+"TOI2109_14-07-25_SPIROU_CO_5pc_APERO.png",
 
-    #dir_figures + "CCF/WASP33_darveau_SPIROU_13CO.png",
-    #dir_figures + "CCF/WASP33_darveau2_SPIROU_13CO.png",
+    #dir_figures + "CCF/"+sort_dir+"WASP33_darveau_SPIROU_13CO.png",
+    #dir_figures + "CCF/"+sort_dir+"WASP33_darveau2_SPIROU_13CO.png",
 
-    #dir_figures + "CCF/TOI2109_14-05-23_HARPS_Fe.png",
-    #dir_figures + "CCF/TOI2109_29-04-25_HARPS_Fe.png",
-    #dir_figures + "CCF/TOI2109_06-05-25_HARPS_maroonx.png",
-    #dir_figures + "CCF/TOI2109_08-05-25_HARPS_maroonx.png",
-    #dir_figures + "CCF/TOI2109_10-05-25_HARPS_maroonx.png",
-    #dir_figures + "CCF/TOI2109_06-06-25_HARPS_maroonx.png",
-    #dir_figures + "CCF/TOI2109_29-06-25_HARPS_maroonx.png",    
+    #dir_figures + "CCF/"+sort_dir+"TOI2109_14-05-23_HARPS_Fe.png",
+    #dir_figures + "CCF/"+sort_dir+"TOI2109_29-04-25_HARPS_Fe.png",
+    #dir_figures + "CCF/"+sort_dir+"TOI2109_06-05-25_HARPS_maroonx.png",
+    #dir_figures + "CCF/"+sort_dir+"TOI2109_08-05-25_HARPS_maroonx.png",
+    #dir_figures + "CCF/"+sort_dir+"TOI2109_10-05-25_HARPS_maroonx.png",
+    #dir_figures + "CCF/"+sort_dir+"TOI2109_06-06-25_HARPS_maroonx.png",
+    #dir_figures + "CCF/"+sort_dir+"TOI2109_29-06-25_HARPS_maroonx.png",    
     ]
-save_path_tot = dir_figures +"CCF/TOI2109_SPIROU_all_daysides_CO_5pc_APERO.png"
-#save_path_tot = dir_figures +"CCF/WASP33_all_13CO_broad_dayside.png"
+save_path_tot = dir_figures +"CCF/"+sort_dir+"TOI2109_SPIROU_all_daysides_CO_5pc_APERO.png"
+#save_path_tot = dir_figures +"CCF/"+sort_dir+"WASP33_all_13CO_broad_dayside.png"
 
 #Do we add white lines at the planet position ? 
 white_lines = True
@@ -538,6 +545,15 @@ plt.rc('ytick', labelsize=SMALL_SIZE)    # fontsize of the tick labels
 plt.rc('legend', fontsize=SMALL_SIZE)    # legend fontsize
 plt.rc('figure', titlesize=BIGGER_SIZE)  # fontsize of the figure title
 
+###########################################################################
+### Make sure required folders exist
+###########################################################################
+os.makedirs(os.path.dirname(dir_save_read), exist_ok=True)
 
+os.makedirs(os.path.dirname(dir_reduce_in), exist_ok=True)
+os.makedirs(os.path.dirname(dir_reduce_out), exist_ok=True)
+
+os.makedirs(os.path.dirname(dir_correl_in), exist_ok=True)
+os.makedirs(os.path.dirname(dir_correl_out), exist_ok=True)
 
 

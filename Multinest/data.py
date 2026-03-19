@@ -39,16 +39,20 @@ def make_data(args):
     
     if instrument == "SPIROU":
         ### List of SPIRou absolute orders -- Reddest: 31; Bluest: 79
-        orderstot   =  np.arange(31,80)[::-1].tolist() 
+        orderstot   =  np.arange(31,80)[::-1].tolist()
+        sigma = 1800                    #instrumental broadening [m/s]
     elif instrument == "NIRPS":
         ### List of NIRPS absolute orders -- Reddest: 0; Bluest: 74
         orderstot   =  np.arange(0,75)[::-1].tolist()
+        sigma = 1600                    #instrumental broadening [m/s]
     elif instrument == "IGRINS":
         ### List of IGRINS orders -- Reddest: 53; Bluest: 0
         orderstot   =  np.arange(0,54).tolist()
+        sigma = 2800                    #instrumental broadening [m/s]
     elif instrument == "HARPS":
         ### List of HARPS orders -- Reddest: 71; Bluest: 0
         orderstot   =  np.arange(0,71).tolist()
+        sigma = 1150                    #instrumental broadening [m/s]
 
     lambdas = np.zeros((130,2))
     for ind,order in enumerate(orderstot):
@@ -65,6 +69,7 @@ def make_data(args):
         vsini = Vsini,
 	    lambdas = lambdas,
         orderstot=orderstot,
+        sigma = sigma,
         num_transit=num_transit,
         pkl = pkl,
         LRS_file=LRS_file,

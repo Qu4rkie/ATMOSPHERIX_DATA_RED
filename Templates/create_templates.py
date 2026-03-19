@@ -29,23 +29,28 @@ nf = 501
 #type_templ = "transmission"
 type_templ = "emission"
 
+#Radius unit for transmission (transit depth=False and not in m)
 #R_unit = "cm"
 R_unit = "none"
-Rs =0.375* 696340000.0 # in solpltar unit
+#Star radius (ditto) - this file really need some revision...
+Rs =0.375* 696340000.0 # in solar unit
 Ts = 3600.
 
 Rp = 0.5485*69911000.0
 
+#Units for the wavelength file
 #lambdas_unit = "micron"
 lambdas_unit = "nano"
 
+#Is the radius already in transit depth units (or Fp/F* in emission)
+transit_depth = True
+#transit_depth = False
 
-#transit_depth = True
-transit_depth = False
-
+#Do we apply broadening to the templates
 #broadening = True
-broadening = True
+broadening = False
 
+#Do we normalise the templates
 norm = True
 #norm = False
 
@@ -129,11 +134,10 @@ for i in range(len(list_ord)):
     
     for j in range(np.shape(lambdas)[0]) :
         out[0,j] = lambdas[j]
-        if type_templ=="transmission":
-            if transit_depth:
-                out[1,j] = planet_ord[j]
-            else:
-                out[1,j] = (planet_ord[j]/Rs)**2
+        if transit_depth:
+            out[1,j] = planet_ord[j]
+        elif type_templ=="transmission":
+            out[1,j] = (planet_ord[j]/Rs)**2
         else:
             out[1,j] = planet_ord[j]*(Rp/Rs)**2/np.pi/B(out[0,j]*1e-9,Ts) #We assume here that the Doppler shift is not important
             # for the stellar spectrum .... that's a trouble with RM

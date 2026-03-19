@@ -6,7 +6,7 @@ Created on Thu Jan 27 11:03:12 2022
 @author: florian
 """
 
-import json
+import pickle
 import sys
 import scipy.stats, scipy
 import pymultinest
@@ -24,6 +24,7 @@ import likelihood_LR as like_LR
 from priors import Priors
 
 os.environ["HDF5_USE_FILE_LOCKING"] = "FALSE"
+os.environ["OMP_NUM_THREADS"] = "1"
 
 # MPI.pickle.__init__(dill.dumps, dill.loads)
 
@@ -33,8 +34,6 @@ os.environ["HDF5_USE_FILE_LOCKING"] = "FALSE"
         
 def mpi_print(*args):
     print(*args)
-        
-os.environ["OMP_NUM_THREADS"] = "1"
 
 # First read the command line
 def parse_cmdline_args():
@@ -76,19 +75,20 @@ config = dict(
     #Radtrans Parameters
     p_minbar = -8.0,
     p_maxbar = 2.0,
-    n_pressure = 130,
+    n_pressure = 100,
     radius_RJ=planet_data["radius_RJ"],
     Rs_Rsun = planet_data["Rs_Rsun"],
     gravity_SI= planet_data["gravity_SI"],
     P0_bar = 0.1,
     HHe_ratio=0.275,  # solar ratio
+    Vrot = 10,         #planet rotation velocity [km/s]
     #Species to include in fit (format: "petitRADTRANS identifier":Molar mass)
-    line_species = {"Fe":56,"OH":17}, 
+    line_species = {"Fe":56}, 
     emission = True,  #Are we in emission or transit?
     #Temperature profile parameters
-    temperature_profile = "parametric",
-    sigma_smooth = 300,  #smoothing parameter [K/dex^2]
-    pressure_points =np.logspace(-6,1,4),
+    temperature_profile = "two_point",  #Guillot, isothermal, parametric, two_point
+    #sigma_smooth = 300,                #smoothing parameter [K/dex^2]
+    #pressure_points =np.logspace(-6,1,8),
     #kappa_IR=0.001,
     #gamma=10**-1.5,
     #T_int=500,
@@ -100,6 +100,7 @@ config = dict(
     #Instrument parameters (from data.py)
     lambdas = planet_data["lambdas"],
     orderstot = planet_data["orderstot"],
+    sigma = planet_data["sigma"],  #instrumental broadening [m/s]
     pkl = planet_data["pkl"],
     #file with the reduced  datas
     num_transit = planet_data["num_transit"],
@@ -109,44 +110,75 @@ config = dict(
     LRS_file = planet_data["LRS_file"]
 )
 
-parameters = ["Kp","Vsys","Fe","OH","vrot"]
 parameters = {
     'Kp': {
         'prior_parameters': [150, 300],  # (km/s)
         'prior_type': 'uniform',
     },
     'Vsys': {
-        'prior_parameters': [-50, 50],  # (km/s)
+        'prior_parameters': [-75, 75],  # (km/s)
         'prior_type': 'uniform',
     },
     'MMR_Fe': {
         'prior_parameters': [-8, 0],  # (MMR)
         'prior_type': 'uniform',
     },
-    'MMR_OH': {
-        'prior_parameters': [-8, 0],  # (MMR)
-        'prior_type': 'uniform',
-    },
-    'Vrot': {
-        'prior_parameters': [0, 20],  # (km/s)
-        'prior_type': 'uniform',
-    },
-    'T1': {
+    #'MMR_OH': {
+    #    'prior_parameters': [-8, 0],  # (MMR)
+    #    'prior_type': 'uniform',
+    #},
+    #'Vrot': {
+    #    'prior_parameters': [0, 20],  # (km/s)
+    #    'prior_type': 'uniform',
+    #},
+    'T_top': {
         'prior_parameters': [500, 6000],  # (K)
         'prior_type': 'uniform',
     },
-    'T2': {
+    'T_bot': {
         'prior_parameters': [500, 6000],  # (K)
         'prior_type': 'uniform',
     },
-    'T3': {
-        'prior_parameters': [500, 6000],  # (K)
+    'P_top': {
+        'prior_parameters': [-7, 1],  # (log Bar)
         'prior_type': 'uniform',
     },
-    'T4': {
-        'prior_parameters': [500, 6000],  # (K)
+    'delta_P': {
+        'prior_parameters': [0, 8],  # (log Bar)
         'prior_type': 'uniform',
     },
+    #'T1': {
+    #    'prior_parameters': [500, 6000],  # (K)
+    #    'prior_type': 'uniform',
+    #},
+    #'T2': {
+    #    'prior_parameters': [500, 6000],  # (K)
+    #    'prior_type': 'uniform',
+    #},
+    #'T3': {
+    #    'prior_parameters': [500, 6000],  # (K)
+    #    'prior_type': 'uniform',
+    #},
+    #'T4': {
+    #    'prior_parameters': [500, 6000],  # (K)
+    #    'prior_type': 'uniform',
+    #},
+    #'T5': {
+    #    'prior_parameters': [500, 6000],  # (K)
+    #    'prior_type': 'uniform',
+    #}
+    #'T6': {
+    #    'prior_parameters': [500, 6000],  # (K)
+    #    'prior_type': 'uniform',
+    #}
+    #'T7': {
+    #    'prior_parameters': [500, 6000],  # (K)
+    #    'prior_type': 'uniform',
+    #}
+    #'T8': {
+    #    'prior_parameters': [500, 6000],  # (K)
+    #    'prior_type': 'uniform',
+    #}
     }
 n_params = len(parameters)
 
@@ -194,16 +226,24 @@ def loglike(cube, ndim, nparams):
     #### LRS if there is any need
 #    loglikelihood_LR = like_LR.return_like_LR( model_dic, data_dic)
 
-
     return loglikelihood_HR#+loglikelihood_LR
 
 
-pymultinest.run(loglike, prior, n_params,outputfiles_basename = 
-               "/user/home/yarivv/ATMOSPHERIX_DATA_RED/Multinest/Results/", 
-                resume =False, verbose = True,
+#Run pymultinest
+save_dir = "/user/home/yarivv/ATMOSPHERIX_DATA_RED/Multinest/Results_Fe/"
+pymultinest.run(loglike, prior, n_params,outputfiles_basename = save_dir, 
+                resume = args.resume, verbose = True,
                 n_live_points=400,
-                n_iter_before_update=50)
+                n_iter_before_update=100)
 
+#Save config and paramaters for future plotting
+save_dict = {
+    "priors": parameters,
+    "config": config,
+    "data"  : data_dic
+}
+with open(save_dir+"config.pkl", "wb") as f:
+    pickle.dump(save_dict, f)
 
 
 

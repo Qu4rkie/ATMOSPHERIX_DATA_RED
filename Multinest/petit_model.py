@@ -5,17 +5,44 @@ from petitRADTRANS.radtrans import Radtrans
 from petitRADTRANS import physical_constants as cst
 from petitRADTRANS.physics import temperature_profile_function_guillot_global
 from petitRADTRANS.spectral_model import SpectralModel
-from scipy.interpolate import CubicSpline
+from scipy.interpolate import PchipInterpolator
 from astropy.io import fits
 from convolve import rot_int_cmj
 import contextlib
 
 def my_t_profile(pressures, temperature_points, pressure_points, **kwargs):
-    TP =  CubicSpline(np.log(pressure_points),temperature_points, bc_type="natural",extrapolate=True)
+    TP = PchipInterpolator(np.log(pressure_points), temperature_points)
     temperatures = TP(np.log(pressures))
     mask_low, mask_high = pressures < pressure_points[0], pressures > pressure_points[-1]
     temperatures[mask_low] = temperature_points[0]
     temperatures[mask_high] = temperature_points[-1]
+    return temperatures
+
+def two_point_profile(pressures, T_top, T_bot, P_top, P_bot, **kwargs):
+    """
+    Two-point temperature profile with isothermal regions and
+    a linear trend in log-pressure between P_top and P_bot.
+
+    ---> Inputs     - pressures : array_like
+                        Pressure grid (e.g., np.logspace), same units as P_top/P_bot
+                    - T_top : float
+                        Temperature in the upper isothermal region
+                    - T_bot : float
+                        Temperature in the lower isothermal region
+                    - P_top : float
+                        Pressure where the upper isotherm transitions to the gradient
+                    - P_bot : float
+                        Pressure where the gradient transitions to the lower isotherm
+
+    ---> Output     - temperatures : ndarray
+                        Temperature profile with same shape as pressures
+    """
+    logP = np.log10(pressures)
+    logPt, logPb = np.log10(P_top), np.log10(P_bot)
+    slope = (T_bot - T_top) / (logPb - logPt)
+    temperatures = T_top + slope * (logP - logPt)
+    temperatures = np.where(pressures <= P_top, T_top, temperatures)
+    temperatures = np.where(pressures >= P_bot, T_bot, temperatures)
     return temperatures
 
 class Model(object):
@@ -25,8 +52,8 @@ class Model(object):
         self.p_maxbar= config_dict["p_maxbar"]
         self.n_pressure=config_dict["n_pressure"]
         self.P0=config_dict["P0_bar"]
-        self.radius=config_dict["radius_RJ"]*cst.r_jup_mean
-        self.Rs=config_dict["Rs_Rsun"]*6.9634e10  #cm
+        self.radius=config_dict["radius_RJ"]*cst.r_jup_mean #[cm]
+        self.Rs=config_dict["Rs_Rsun"]*6.9634e10  #[cm]
         self.gravity_SI=config_dict["gravity_SI"]
         self.HHe_ratio=config_dict["HHe_ratio"]
         self.emission = config_dict["emission"]
@@ -35,6 +62,9 @@ class Model(object):
             self.vsini = config_dict["vsini"] #[km/s]
         self.line_species = config_dict["line_species"]
 
+        if "Vrot" in config_dict:
+            self.rot_speed = config_dict["Vrot"]
+
         self.profile = config_dict["temperature_profile"]
         if self.profile == "guillot":
             self.kappa_IR = config_dict["kappa_IR"]
@@ -42,11 +72,12 @@ class Model(object):
             self.T_int = config_dict["T_int"]
         elif self.profile == "parametric":
             self.pressure_points = config_dict['pressure_points']
-        elif self.profile != "isothermal":
+        elif (self.profile != "isothermal") & (self.profile != "two_point"):
             print("Temperature Profile type "+self.profile+" unknown")
 
         self.lambdas = config_dict["lambdas"]
         self.orderstot = config_dict["orderstot"]
+        self.sigma = config_dict["sigma"]           #instrumental broadening [m/s]
 
         self.num_transit= config_dict["num_transit"]
         self.winds = config_dict["winds"]
@@ -107,7 +138,10 @@ class Model(object):
         elif self.profile == "parametric":
             temperature_points = np.array([para_dic["T"+str(X+1)] for X in range(len(self.pressure_points))])
             temperatures = my_t_profile(self.pressures, temperature_points, self.pressure_points)
-        
+        elif self.profile == "two_point":
+            temperatures = two_point_profile(self.pressures, para_dic["T_top"], para_dic["T_bot"], 
+                            10**para_dic["P_top"], 10**(para_dic["P_top"]+para_dic["delta_P"]))
+
         Z,MW_sum=0,0
         mass_fractions = {}
         for key in list(self.line_species.keys()):
@@ -195,13 +229,12 @@ class Model(object):
             # "tdepth_LR": tdepth_LR,
         }
 
-    def reduce_model(self, model_dic): #renormalizes the atmospheric mode
-        #print(self.winds)
+    def reduce_model(self, model_dic): #renormalizes the atmospheric model
         if self.winds:
-            return prep_mod.prepare(model_dic,self.Rs,self.orderstot,winds=self.winds,rot_speed=
-                              self.rot_speed,superrot=self.superrot,emission=self.emission)
+            return prep_mod.prepare(model_dic,self.Rs,self.orderstot,self.sigma,winds=self.winds,
+                              rot_speed=self.rot_speed,superrot=self.superrot,emission=self.emission)
         else:
-            return prep_mod.prepare(model_dic,self.Rs,self.orderstot,rot_speed=
+            return prep_mod.prepare(model_dic,self.Rs,self.orderstot,self.sigma,rot_speed=
                               self.rot_speed,emission=self.emission)
 
 
